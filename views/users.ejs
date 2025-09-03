@@ -1,0 +1,48 @@
+<html>
+  <head>
+    <link rel="stylesheet" href="/css/style.css" />
+    <title><%= title %></title>
+    <body>
+      <%- include("components/validationError") -%> <% if(message){ %>
+      <h4><%= message %></h4>
+      <% } %>
+      <table>
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>name</th>
+            <th>price</th>
+            <th>password</th>
+            <th>operation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <div>
+            <form action="/user" method="POST">
+              <input type="text" placeholder="id" name="id" />
+              <input type="text" placeholder="name" name="name" />
+              <input type="text" placeholder="price" name="price" />
+              <input type="text" placeholder="password" name="password" />
+              <input type="submit" />
+            </form>
+          </div>
+          <%users.map(user=>{%>
+
+          <tr>
+            <td><%= user.id %></td>
+            <td><%= user.name %></td>
+            <td><%= user.price %></td>
+            <td><%= user.password %></td>
+            <td>
+              <form action="/user/<%= user.id %>?method=DELETE" method="post">
+                <input type="submit" value="Remove" />
+              </form>
+              <a href="/user/<%=user.id%>">update</a>
+            </td>
+            <% }) %>
+          </tr>
+        </tbody>
+      </table>
+    </body>
+  </head>
+</html>

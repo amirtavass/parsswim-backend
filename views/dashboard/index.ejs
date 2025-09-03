@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <%- include("../components/validationError") -%>
+    <h1>dashboard</h1>
+    <h2>Hi <%= req.user.name %></h2>
+    <img src="<%= req.user.img%>" style="width: 100px; border-radius: 50%" />
+    <form
+      action="/dashboard/edituser"
+      method="POST"
+      enctype="multipart/form-data"
+    >
+      <input type="hidden" name="id" value="<%= req.user._id %>" />
+      <input
+        type="text"
+        placeholder="name"
+        name="name"
+        value="<%= req.user.name %>"
+      />
+      <input type="file" name="img" />
+      <input type="submit" value="send" />
+    </form>
+    <h3>your current balance : <%=req.user.balance%></h3>
+    <form action="/dashboard/pay" method="POST" style="border: 1px solid green">
+      <h2>Charge your balance with disred amount</h2>
+      <input type="number" placeholder="amount" name="amount" />
+      <input type="submit" value="pay" />
+    </form>
+    <a href="/logout">logout</a>
+  </body>
+</html>
