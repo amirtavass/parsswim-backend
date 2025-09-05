@@ -1,4 +1,4 @@
-// Updated: [8:25pm]
+// server.js - CORS section update
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
@@ -28,7 +28,7 @@ console.log("🔍 Environment check:");
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("MONGODB_URL exists:", !!process.env.MONGODB_URL);
 console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
-console.log("Using MongoDB URL:", mongoUrl.replace(/\/\/.*@/, "//***:***@")); // Hide credentials
+console.log("Using MongoDB URL:", mongoUrl.replace(/\/\/.*@/, "//***:***@"));
 
 // Connect to MongoDB with better error handling
 mongoose
@@ -44,26 +44,56 @@ mongoose
 // Global config
 global.config = require("./config");
 
-// CORS configuration
+// ENHANCED CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",")
+  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
   : ["http://localhost:3000", "https://parsswim.ir"];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
+// Add localhost variations
+if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
+  allowedOrigins.push("http://127.0.0.1:3000");
+  allowedOrigins.push("http://localhost:3001");
+  allowedOrigins.push("http://127.0.0.1:3001");
+}
 
-      if (allowedOrigins.indexOf(origin) !== -1) {
+console.log("✅ CORS Allowed Origins:", allowedOrigins);
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) {
+      console.log("⚠️ Request with no origin header - allowing");
+      return callback(null, true);
+    }
+
+    console.log("🔍 Request origin:", origin);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log("✅ Origin allowed:", origin);
+      callback(null, true);
+    } else {
+      console.log("❌ CORS blocked origin:", origin);
+      // In development, you might want to allow all origins
+      if (process.env.NODE_ENV === "development") {
+        console.log("⚠️ Development mode - allowing blocked origin");
         callback(null, true);
       } else {
-        console.log("❌ CORS blocked origin:", origin);
         callback(new Error("Not allowed by CORS"));
       }
-    },
-    credentials: true,
-  })
-);
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+  exposedHeaders: ["set-cookie"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options("*", cors(corsOptions));
 
 // Static files
 app.use(express.static(path.join(__dirname, "public")));
@@ -74,17 +104,20 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(methodOverride("method"));
 
-// Session configuration
+// Session configuration - IMPORTANT: Update for cross-domain cookies
 app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
-    resave: true,
-    saveUninitialized: true,
+    resave: false,
+    saveUninitialized: false,
     cookie: {
-      expires: new Date(Date.now() + 1000 * 3600 * 24 * 100),
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      expires: new Date(Date.now() + 1000 * 3600 * 24 * 7), // 7 days
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // HTTPS only in production
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // Important for cross-domain
+      domain:
+        process.env.NODE_ENV === "production" ? ".parsswim.ir" : undefined, // Allow subdomain access
     },
     store: MongoStore.create({
       mongoUrl: mongoUrl,
@@ -103,8 +136,11 @@ app.use(passport.session());
 // Template engine
 app.set("view engine", "ejs");
 
-// Middleware
+// Middleware to log all requests
 app.use((req, res, next) => {
+  console.log(
+    `📨 ${req.method} ${req.path} from ${req.get("origin") || "no-origin"}`
+  );
   next();
 });
 
@@ -113,59 +149,69 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Health check endpoint with more info
 app.get("/", (req, res) => {
   res.json({
     success: true,
     message: "ParsSwim API is running! 🏊‍♂️",
-    environment: process.env.NODE_ENV,
+    environment: process.env.NODE_ENV || "development",
     timestamp: new Date().toISOString(),
     database:
       mongoose.connection.readyState === 1 ? "Connected ✅" : "Disconnected ❌",
+    cors: {
+      allowedOrigins: allowedOrigins,
+      requestOrigin: req.get("origin") || "no-origin",
+    },
+    headers: {
+      host: req.get("host"),
+      origin: req.get("origin"),
+      referer: req.get("referer"),
+    },
   });
 });
 
 // API routes
 app.use("/", require("./routes/index"));
 
-// Error handling
+// Error handling for 404
 app.all(/.*/, (req, res, next) => {
-  try {
-    let err = new Error("API endpoint not found");
-    err.status = 404;
-    throw err;
-  } catch (err) {
-    next(err);
-  }
+  console.log(`⚠️ 404 - Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({
+    success: false,
+    message: `API endpoint not found: ${req.method} ${req.path}`,
+    availableEndpoints: [
+      "GET /",
+      "POST /auth/login",
+      "POST /auth/register",
+      "GET /classes",
+      "GET /products",
+      // Add more endpoints here
+    ],
+  });
 });
 
+// Global error handler
 app.use(async (err, req, res, next) => {
   const code = err.status || 500;
-  const message = err.message;
+  const message = err.message || "Internal server error";
 
-  if (process.env.NODE_ENV === "production") {
-    return res.status(code).json({
-      success: false,
-      message:
-        code === 404 ? "API endpoint not found" : "Internal server error",
-    });
-  } else {
-    return res.status(code).json({
-      success: false,
-      message: message,
-      stack: err.stack,
-    });
-  }
+  console.error(`❌ Error ${code}: ${message}`);
+  console.error(err.stack);
+
+  res.status(code).json({
+    success: false,
+    message: message,
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+  });
 });
 
-// Use Railway's PORT
+// Use Railway's PORT or fallback
 const port = process.env.PORT || 4000;
 
 app.listen(port, "0.0.0.0", () => {
   console.log(`🚀 ParsSwim API server is running on port ${port}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
+  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`Database: ${mongoUrl.replace(/\/\/.*@/, "//***:***@")}`);
   console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
+  console.log(`Server URL: http://localhost:${port}`);
 });
-
-module.exports = app;

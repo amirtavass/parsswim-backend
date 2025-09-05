@@ -5,8 +5,8 @@ module.exports = {
     url: process.env.MONGODB_URL || "mongodb://localhost:27017/nodestart",
   },
   session: {
-    secret: process.env.SESSION_SECRET || "your-default-secret-key",
-    cookie_secret: process.env.COOKIE_SECRET || "your-default-cookie-secret",
+    secret: process.env.SESSION_SECRET || "gfvfdxzcb",
+    cookie_secret: process.env.COOKIE_SECRET || "fdxnsfcbbdxc",
   },
   cors: {
     origin: process.env.FRONTEND_URL || "http://localhost:3000",

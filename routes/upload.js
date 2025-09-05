@@ -37,28 +37,20 @@ router.post("/product", requireAdmin, (req, res) => {
 
       console.log("File uploaded successfully:", req.file);
 
-      // FIXED: Return proper image path without double slashes
+      // FIXED: Return proper image path like the old version
       // Remove 'public' from path and ensure single leading slash
-      let imagePath = req.file.path.replace(/\\/g, "/");
-
-      // Remove 'public' from the beginning if it exists
-      if (imagePath.startsWith("public/")) {
-        imagePath = imagePath.substring(6); // Remove 'public'
-      }
+      let imagePath = req.file.path.replace(/\\/g, "/").substring(6); // Remove 'public'
 
       // Ensure path starts with single slash
       if (!imagePath.startsWith("/")) {
         imagePath = "/" + imagePath;
       }
 
-      // Remove any double slashes
-      imagePath = imagePath.replace(/\/+/g, "/");
-
       console.log("Final image path:", imagePath);
 
       res.json({
         success: true,
-        imagePath: imagePath,
+        imagePath: imagePath, // Return clean path like: /uploads/images/filename.jpg
         message: "Image uploaded successfully",
         file: {
           originalName: req.file.originalname,
