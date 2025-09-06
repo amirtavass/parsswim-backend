@@ -1,20 +1,15 @@
-// server.js - Minimal Railway-Compatible Version
+// server.js - Enhanced with missing routes but still minimal
 const express = require("express");
 const cors = require("cors");
 
-// Load environment first
 require("dotenv").config();
 
 console.log("🚀 Starting ParsSwim API Server...");
-console.log("Environment:", process.env.NODE_ENV);
-console.log("Railway PORT:", process.env.PORT);
 
 const app = express();
-
-// ✅ CRITICAL: Let Railway control the PORT - don't override it
 const port = process.env.PORT || 3000;
 
-// ✅ Basic CORS - allow all for now
+// CORS
 const corsOptions = {
   origin: true,
   credentials: true,
@@ -25,13 +20,12 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-// ✅ Basic middleware
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Railway Health Check - MUST respond on /
+// ✅ Health checks
 app.get("/", (req, res) => {
-  console.log("Health check requested");
   res.status(200).json({
     success: true,
     message: "ParsSwim API is running on Railway!",
@@ -41,19 +35,15 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ Additional health endpoints
 app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "healthy",
-    uptime: process.uptime(),
-  });
+  res.status(200).json({ status: "healthy", uptime: process.uptime() });
 });
 
 app.get("/ping", (req, res) => {
   res.status(200).send("pong");
 });
 
-// ✅ Basic API endpoints (no complex dependencies)
+// ✅ Auth routes that frontend expects
 app.get("/auth/me", (req, res) => {
   res.status(401).json({
     success: false,
@@ -62,19 +52,49 @@ app.get("/auth/me", (req, res) => {
 });
 
 app.post("/auth/login", (req, res) => {
-  res.json({
+  res.status(401).json({
     success: false,
     message: "Auth service temporarily unavailable",
   });
 });
 
 app.post("/auth/register", (req, res) => {
-  res.json({
+  res.status(400).json({
     success: false,
     message: "Registration service temporarily unavailable",
   });
 });
 
+app.post("/auth/logout", (req, res) => {
+  res.json({
+    success: true,
+    message: "Logged out",
+  });
+});
+
+// ✅ Admin routes that frontend expects
+app.get("/admin/me", (req, res) => {
+  res.status(401).json({
+    success: false,
+    message: "Not authenticated as admin",
+  });
+});
+
+app.post("/admin/login", (req, res) => {
+  res.status(401).json({
+    success: false,
+    message: "Admin service temporarily unavailable",
+  });
+});
+
+app.post("/admin/logout", (req, res) => {
+  res.json({
+    success: true,
+    message: "Admin logged out",
+  });
+});
+
+// ✅ Classes routes
 app.get("/classes", (req, res) => {
   res.json({
     success: true,
@@ -83,11 +103,34 @@ app.get("/classes", (req, res) => {
   });
 });
 
+app.get("/classes/available", (req, res) => {
+  res.json({
+    success: true,
+    data: [],
+    message: "Available classes service loading...",
+  });
+});
+
+app.get("/classes/:id", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Class not found",
+  });
+});
+
+// ✅ Products routes
 app.get("/products", (req, res) => {
   res.json({
     success: true,
     data: [],
     message: "Products service loading...",
+  });
+});
+
+app.get("/products/:id", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Product not found",
   });
 });
 
@@ -100,10 +143,11 @@ try {
   if (mongoUrl) {
     mongoose
       .connect(mongoUrl)
-      .then(() => console.log("✅ MongoDB connected"))
+      .then(() => {
+        console.log("✅ MongoDB connected - ready to add real data");
+        // TODO: Add real route handlers here once DB is connected
+      })
       .catch((err) => console.log("⚠️ MongoDB failed:", err.message));
-  } else {
-    console.log("⚠️ No MongoDB URL provided");
   }
 } catch (error) {
   console.log("⚠️ Mongoose not available:", error.message);
@@ -111,6 +155,7 @@ try {
 
 // ✅ 404 handler
 app.use("*", (req, res) => {
+  console.log("404:", req.method, req.originalUrl);
   res.status(404).json({
     error: "Not Found",
     path: req.originalUrl,
@@ -127,11 +172,10 @@ app.use((error, req, res, next) => {
   });
 });
 
-// ✅ CRITICAL: Listen on 0.0.0.0 with Railway's PORT
+// ✅ Start server
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`✅ Server running on port ${port}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV}`);
-  console.log(`✅ Listening on 0.0.0.0:${port}`);
 });
 
 // ✅ Graceful shutdown
