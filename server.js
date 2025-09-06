@@ -1,78 +1,51 @@
-// server.js - Fixed for Railway 502 Bad Gateway
+// server.js - Minimal Railway-Compatible Version
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 
-// Load environment variables first
+// Load environment first
 require("dotenv").config();
-require("app-module-path").addPath(__dirname);
 
 console.log("🚀 Starting ParsSwim API Server...");
-console.log("🔍 Environment Variables:");
-console.log("NODE_ENV:", process.env.NODE_ENV);
-console.log("PORT:", process.env.PORT);
-console.log("Railway PORT:", process.env.PORT); // Railway sets this automatically
+console.log("Environment:", process.env.NODE_ENV);
+console.log("Railway PORT:", process.env.PORT);
 
 const app = express();
 
-// ✅ RAILWAY FIX: Critical - Use Railway's PORT exactly
-const port = process.env.PORT || 3000; // Railway typically uses 3000, not 4000
-console.log("🚢 Railway PORT detected:", port);
+// ✅ CRITICAL: Let Railway control the PORT - don't override it
+const port = process.env.PORT || 3000;
 
-// ✅ RAILWAY FIX: Essential headers for Railway
-app.use((req, res, next) => {
-  // Railway-specific headers
-  res.set({
-    "X-Powered-By": "Railway",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,PUT,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  });
-
-  // Log requests for Railway debugging
-  console.log(`📡 ${new Date().toISOString()} - ${req.method} ${req.url}`);
-  next();
-});
-
-// ✅ RAILWAY FIX: Simplified CORS for Railway
+// ✅ Basic CORS - allow all for now
 const corsOptions = {
-  origin: true, // Allow all origins temporarily to debug
+  origin: true,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
-  optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-// Basic middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+// ✅ Basic middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// ✅ RAILWAY FIX: Essential health check that Railway expects
+// ✅ Railway Health Check - MUST respond on /
 app.get("/", (req, res) => {
-  console.log("🏥 Health check requested");
+  console.log("Health check requested");
   res.status(200).json({
     success: true,
-    message: "ParsSwim API is running on Railway! 🏊‍♂️",
+    message: "ParsSwim API is running on Railway!",
     timestamp: new Date().toISOString(),
     port: port,
-    environment: process.env.NODE_ENV,
-    railway: {
-      region: process.env.RAILWAY_REGION || "unknown",
-      environment: process.env.RAILWAY_ENVIRONMENT || "unknown",
-      service: process.env.RAILWAY_SERVICE_NAME || "unknown",
-    },
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
-// ✅ RAILWAY FIX: Additional health endpoints
+// ✅ Additional health endpoints
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "healthy",
     uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
   });
 });
 
@@ -80,152 +53,96 @@ app.get("/ping", (req, res) => {
   res.status(200).send("pong");
 });
 
-// ✅ RAILWAY FIX: Basic API routes (simplified for debugging)
-app.get("/api/status", (req, res) => {
-  res.json({
-    api: "working",
-    database: "connecting...",
-    timestamp: new Date().toISOString(),
+// ✅ Basic API endpoints (no complex dependencies)
+app.get("/auth/me", (req, res) => {
+  res.status(401).json({
+    success: false,
+    message: "Not authenticated",
   });
 });
 
-// ✅ RAILWAY FIX: Try to load database and routes, but don't fail if they error
+app.post("/auth/login", (req, res) => {
+  res.json({
+    success: false,
+    message: "Auth service temporarily unavailable",
+  });
+});
+
+app.post("/auth/register", (req, res) => {
+  res.json({
+    success: false,
+    message: "Registration service temporarily unavailable",
+  });
+});
+
+app.get("/classes", (req, res) => {
+  res.json({
+    success: true,
+    data: [],
+    message: "Classes service loading...",
+  });
+});
+
+app.get("/products", (req, res) => {
+  res.json({
+    success: true,
+    data: [],
+    message: "Products service loading...",
+  });
+});
+
+// ✅ Database connection (non-blocking)
 let mongoose;
 try {
   mongoose = require("mongoose");
-  console.log("✅ Mongoose loaded");
+  const mongoUrl = process.env.MONGODB_URL;
 
-  // Connect to database
-  const mongoUrl = process.env.MONGODB_URL || process.env.DATABASE_URL;
   if (mongoUrl) {
     mongoose
       .connect(mongoUrl)
-      .then(() => {
-        console.log("✅ MongoDB connected");
-      })
-      .catch((err) => {
-        console.log("⚠️ MongoDB connection failed:", err.message);
-      });
+      .then(() => console.log("✅ MongoDB connected"))
+      .catch((err) => console.log("⚠️ MongoDB failed:", err.message));
+  } else {
+    console.log("⚠️ No MongoDB URL provided");
   }
 } catch (error) {
   console.log("⚠️ Mongoose not available:", error.message);
 }
 
-// ✅ RAILWAY FIX: Try to load routes, but continue if they fail
-try {
-  // Basic auth routes
-  app.post("/auth/login", (req, res) => {
-    res.json({ success: false, message: "Auth service loading..." });
-  });
-
-  app.get("/auth/me", (req, res) => {
-    res.status(401).json({ success: false, message: "Not authenticated" });
-  });
-
-  app.get("/classes", (req, res) => {
-    res.json({
-      success: true,
-      data: [],
-      message: "Classes service loading...",
-    });
-  });
-
-  app.get("/products", (req, res) => {
-    res.json({
-      success: true,
-      data: [],
-      message: "Products service loading...",
-    });
-  });
-
-  console.log("✅ Basic routes configured");
-} catch (error) {
-  console.log("⚠️ Routes configuration failed:", error.message);
-}
-
-// ✅ RAILWAY FIX: Catch all for 404s
+// ✅ 404 handler
 app.use("*", (req, res) => {
-  console.log("❓ 404 request:", req.method, req.originalUrl);
   res.status(404).json({
     error: "Not Found",
     path: req.originalUrl,
-    method: req.method,
     timestamp: new Date().toISOString(),
   });
 });
 
-// ✅ RAILWAY FIX: Global error handler
+// ✅ Error handler
 app.use((error, req, res, next) => {
-  console.error("💥 Error:", error.message);
+  console.error("Error:", error.message);
   res.status(500).json({
     error: "Internal Server Error",
     message: error.message,
-    timestamp: new Date().toISOString(),
   });
 });
 
-// ✅ RAILWAY FIX: Critical - Listen on 0.0.0.0 with Railway's PORT
+// ✅ CRITICAL: Listen on 0.0.0.0 with Railway's PORT
 const server = app.listen(port, "0.0.0.0", () => {
-  console.log("🚀 SUCCESS: ParsSwim API is running!");
-  console.log(`🌐 Port: ${port}`);
-  console.log(`🏠 Host: 0.0.0.0`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`📡 Server URL: http://0.0.0.0:${port}`);
-  console.log(
-    `🚢 Railway Environment: ${process.env.RAILWAY_ENVIRONMENT || "local"}`
-  );
-
-  // Test the server internally
-  console.log("🧪 Testing server health...");
-  const http = require("http");
-  const healthReq = http.request(
-    {
-      hostname: "localhost",
-      port: port,
-      path: "/",
-      method: "GET",
-    },
-    (res) => {
-      console.log(`✅ Internal health check: ${res.statusCode}`);
-    }
-  );
-
-  healthReq.on("error", (err) => {
-    console.log(`❌ Internal health check failed: ${err.message}`);
-  });
-
-  healthReq.end();
+  console.log(`✅ Server running on port ${port}`);
+  console.log(`✅ Environment: ${process.env.NODE_ENV}`);
+  console.log(`✅ Listening on 0.0.0.0:${port}`);
 });
 
-// ✅ RAILWAY FIX: Handle Railway shutdown signals
+// ✅ Graceful shutdown
 process.on("SIGTERM", () => {
-  console.log("🛑 SIGTERM received, shutting down gracefully");
-  server.close(() => {
-    console.log("💤 Server closed");
-    process.exit(0);
-  });
+  console.log("SIGTERM received, shutting down");
+  server.close(() => process.exit(0));
 });
 
 process.on("SIGINT", () => {
-  console.log("🛑 SIGINT received, shutting down gracefully");
-  server.close(() => {
-    console.log("💤 Server closed");
-    process.exit(0);
-  });
-});
-
-// ✅ RAILWAY FIX: Handle errors that could cause 502
-process.on("uncaughtException", (error) => {
-  console.error("💥 Uncaught Exception:", error);
-  // Don't exit immediately, try to recover
-  setTimeout(() => {
-    process.exit(1);
-  }, 1000);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("💥 Unhandled Rejection:", reason);
-  // Don't exit immediately, try to recover
+  console.log("SIGINT received, shutting down");
+  server.close(() => process.exit(0));
 });
 
 module.exports = app;
