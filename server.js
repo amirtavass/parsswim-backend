@@ -1,14 +1,15 @@
-// server.js - Complete implementation for Railway
+// server.js - Railway deployment with existing structure
 const express = require("express");
 const cors = require("cors");
-const session = require("express-session");
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
+const session = require("express-session");
 const MongoStore = require("connect-mongo");
-const { validationResult, check } = require("express-validator");
-const multer = require("multer");
+const passport = require("passport");
+const flash = require("connect-flash");
+const cookieParser = require("cookie-parser");
 const path = require("path");
 
+// Load environment variables
 require("dotenv").config();
 
 console.log("🚀 Starting ParsSwim API Server...");
@@ -16,55 +17,17 @@ console.log("🚀 Starting ParsSwim API Server...");
 const app = express();
 const port = process.env.PORT || 4000;
 
-// ✅ Database Models
-const userSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    phone: { type: String, required: true },
-    password: { type: String, required: true },
-    age: { type: Number },
-    balance: { type: Number, default: 0 },
-    swimmingType: { type: String, default: "normal" },
-    skillLevel: { type: String, default: "beginner" },
-    role: { type: String, default: "student" },
+// ✅ Configuration object (inline since config.js might not be available)
+const config = {
+  port: port,
+  mongodb: {
+    url: process.env.MONGODB_URL || "mongodb://localhost:27017/nodestart",
   },
-  { timestamps: true }
-);
-
-const classSchema = new mongoose.Schema(
-  {
-    title: { type: String, required: true },
-    classType: { type: String, required: true },
-    description: { type: String },
-    duration: { type: Number, required: true },
-    date: { type: Date, required: true },
-    time: { type: String, required: true },
-    maxStudents: { type: Number, required: true },
-    currentStudents: { type: Number, default: 0 },
-    price: { type: Number, required: true },
-    instructor: { type: String, required: true },
-    location: { type: String, default: "استخر اصلی" },
-    isActive: { type: Boolean, default: true },
+  session: {
+    secret: process.env.SESSION_SECRET || "gfvfdxzcb",
+    cookie_secret: process.env.COOKIE_SECRET || "fdxnsfcbbdxc",
   },
-  { timestamps: true }
-);
-
-const productSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    price: { type: Number, required: true },
-    category: { type: String, required: true },
-    description: { type: String },
-    image: { type: String },
-    inStock: { type: Boolean, default: true },
-    isActive: { type: Boolean, default: true },
-  },
-  { timestamps: true }
-);
-
-// Models
-let User, Class, Product;
+};
 
 // ✅ CORS Configuration
 const corsOptions = {
@@ -84,16 +47,17 @@ app.options("*", cors(corsOptions));
 // ✅ Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser(config.session.cookie_secret));
 
 // ✅ Session Configuration
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "your-secret-key",
+    secret: config.session.secret,
     resave: false,
     saveUninitialized: false,
-    store: process.env.MONGODB_URL
+    store: config.mongodb.url
       ? MongoStore.create({
-          mongoUrl: process.env.MONGODB_URL,
+          mongoUrl: config.mongodb.url,
         })
       : undefined,
     cookie: {
@@ -104,55 +68,12 @@ app.use(
   })
 );
 
-// ✅ Admin credentials
-const ADMIN_USERS = [
-  {
-    id: "admin1",
-    username: "admin",
-    password: bcrypt.hashSync("admin123", 8),
-    role: "admin",
-  },
-];
+// ✅ Passport Configuration
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(flash());
 
-// ✅ Helper Functions
-const requireAuth = (req, res, next) => {
-  if (!req.session.userId) {
-    return res.status(401).json({
-      success: false,
-      message: "Authentication required",
-    });
-  }
-  next();
-};
-
-const requireAdmin = (req, res, next) => {
-  if (!req.session.isAdmin || !req.session.adminId) {
-    return res.status(403).json({
-      success: false,
-      message: "Admin access required",
-    });
-  }
-  next();
-};
-
-// ✅ Validation middleware
-const validateLogin = [
-  check("name", "Username is required").not().isEmpty(),
-  check("password", "Password must be at least 5 characters").isLength({
-    min: 5,
-  }),
-];
-
-const validateRegister = [
-  check("name", "Name is required").not().isEmpty(),
-  check("email", "Valid email is required").isEmail(),
-  check("phone", "Phone is required").not().isEmpty(),
-  check("password", "Password must be at least 5 characters").isLength({
-    min: 5,
-  }),
-];
-
-// ✅ Health Check Routes
+// ✅ Health Check Route
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -174,479 +95,28 @@ app.get("/health", (req, res) => {
   });
 });
 
-// ✅ Auth Routes
-app.post("/auth/register", validateRegister, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
-    }
-
-    if (!User) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not connected",
-      });
-    }
-
-    const { name, email, phone, password, age } = req.body;
-
-    // Check existing user
-    const existingUser = await User.findOne({
-      $or: [{ email }, { name }],
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User already exists",
-      });
-    }
-
-    // Create user
-    const hashedPassword = bcrypt.hashSync(password, 8);
-    const newUser = new User({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      age: age || null,
-      balance: 0,
-    });
-
-    await newUser.save();
-
-    // Set session
-    req.session.userId = newUser._id;
-    req.session.user = {
-      id: newUser._id,
-      name: newUser.name,
-      email: newUser.email,
-      balance: newUser.balance,
-    };
-
-    res.json({
-      success: true,
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone,
-        balance: newUser.balance,
-        skillLevel: newUser.skillLevel,
-      },
-      message: "Registration successful",
-    });
-  } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Registration failed: " + error.message,
-    });
-  }
-});
-
-app.post("/auth/login", validateLogin, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
-    }
-
-    if (!User) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not connected",
-      });
-    }
-
-    const { name, password } = req.body;
-
-    // Find user
-    const user = await User.findOne({
-      $or: [{ name }, { email: name }],
-    });
-
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
-    }
-
-    // Set session
-    req.session.userId = user._id;
-    req.session.user = {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      balance: user.balance,
-    };
-
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        balance: user.balance,
-        skillLevel: user.skillLevel,
-      },
-      message: "Login successful",
-    });
-  } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Login failed",
-    });
-  }
-});
-
-app.get("/auth/me", async (req, res) => {
-  try {
-    if (!req.session.userId || !User) {
-      return res.status(401).json({
-        success: false,
-        message: "Not authenticated",
-      });
-    }
-
-    const user = await User.findById(req.session.userId);
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        balance: user.balance,
-        skillLevel: user.skillLevel,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching user",
-    });
-  }
-});
-
-app.post("/auth/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Logout failed",
-      });
-    }
-    res.json({
-      success: true,
-      message: "Logged out successfully",
-    });
-  });
-});
-
-// ✅ Admin Routes
-app.post(
-  "/admin/login",
-  [
-    check("username", "Username is required").not().isEmpty(),
-    check("password", "Password is required").not().isEmpty(),
-  ],
-  (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array().map((err) => err.msg),
-        });
-      }
-
-      const { username, password } = req.body;
-      const admin = ADMIN_USERS.find((a) => a.username === username);
-
-      if (!admin || !bcrypt.compareSync(password, admin.password)) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid admin credentials",
-        });
-      }
-
-      req.session.adminId = admin.id;
-      req.session.isAdmin = true;
-
-      res.json({
-        success: true,
-        admin: {
-          id: admin.id,
-          username: admin.username,
-          role: admin.role,
-        },
-        message: "Admin login successful",
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: "Admin login failed",
-      });
-    }
-  }
-);
-
-app.get("/admin/me", (req, res) => {
-  if (!req.session.isAdmin || !req.session.adminId) {
-    return res.status(401).json({
-      success: false,
-      message: "Not authenticated as admin",
-    });
-  }
-
-  const admin = ADMIN_USERS.find((a) => a.id === req.session.adminId);
-  if (!admin) {
-    return res.status(401).json({
-      success: false,
-      message: "Admin not found",
-    });
-  }
-
-  res.json({
-    success: true,
-    admin: {
-      id: admin.id,
-      username: admin.username,
-      role: admin.role,
-    },
-  });
-});
-
-app.post("/admin/logout", (req, res) => {
-  req.session.adminId = null;
-  req.session.isAdmin = null;
-  res.json({
-    success: true,
-    message: "Admin logged out successfully",
-  });
-});
-
-// ✅ Classes Routes
-app.get("/classes", async (req, res) => {
-  try {
-    if (!Class) {
-      return res.json({
-        success: true,
-        data: [],
-        message: "Database not connected - sample data",
-      });
-    }
-
-    let filter = { isActive: true };
-    if (req.query.classType) {
-      filter.classType = req.query.classType;
-    }
-
-    const classes = await Class.find(filter).sort({ date: 1, time: 1 });
-    res.json({
-      success: true,
-      data: classes,
-      message: "Classes retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Classes error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching classes",
-    });
-  }
-});
-
-app.get("/classes/available", async (req, res) => {
-  try {
-    if (!Class) {
-      return res.json({
-        success: true,
-        data: [],
-        message: "Database not connected",
-      });
-    }
-
-    const classes = await Class.find({
-      isActive: true,
-      date: { $gte: new Date() },
-      $expr: { $lt: ["$currentStudents", "$maxStudents"] },
-    }).sort({ date: 1, time: 1 });
-
-    res.json({
-      success: true,
-      data: classes,
-      message: "Available classes retrieved successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching available classes",
-    });
-  }
-});
-
-app.post(
-  "/classes",
-  requireAdmin,
-  [
-    check("title", "Title is required").not().isEmpty(),
-    check("duration", "Duration must be positive").isInt({ min: 1 }),
-    check("date", "Valid date required").isISO8601(),
-    check("maxStudents", "Max students must be positive").isInt({ min: 1 }),
-    check("price", "Price must be non-negative").isNumeric({ min: 0 }),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array().map((err) => err.msg),
-        });
-      }
-
-      if (!Class) {
-        return res.status(500).json({
-          success: false,
-          message: "Database not connected",
-        });
-      }
-
-      const newClass = new Class(req.body);
-      await newClass.save();
-
-      res.status(201).json({
-        success: true,
-        data: newClass,
-        message: "Class created successfully",
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: "Error creating class",
-      });
-    }
-  }
-);
-
-// ✅ Products Routes
-app.get("/products", async (req, res) => {
-  try {
-    if (!Product) {
-      return res.json({
-        success: true,
-        data: [],
-        message: "Database not connected - sample data",
-      });
-    }
-
-    let filter = { isActive: true };
-    if (req.query.category) {
-      filter.category = req.query.category;
-    }
-
-    const products = await Product.find(filter).sort({ createdAt: -1 });
-    res.json({
-      success: true,
-      data: products,
-      message: "Products retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Products error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching products",
-    });
-  }
-});
-
-app.post(
-  "/products",
-  requireAdmin,
-  [
-    check("name", "Product name is required").not().isEmpty(),
-    check("price", "Price must be positive").isNumeric({ min: 0 }),
-    check("category", "Valid category required").isIn([
-      "swimwear",
-      "swimgoggles",
-      "swimfins",
-      "swimequipment",
-    ]),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array().map((err) => err.msg),
-        });
-      }
-
-      if (!Product) {
-        return res.status(500).json({
-          success: false,
-          message: "Database not connected",
-        });
-      }
-
-      const newProduct = new Product(req.body);
-      await newProduct.save();
-
-      res.status(201).json({
-        success: true,
-        data: newProduct,
-        message: "Product created successfully",
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: "Error creating product",
-      });
-    }
-  }
-);
-
-// ✅ Database Connection
+// ✅ Connect to Database
 async function connectDatabase() {
   try {
-    const mongoUrl = process.env.MONGODB_URL;
-
-    if (!mongoUrl) {
+    if (!config.mongodb.url) {
       console.log("⚠️  No MONGODB_URL provided - running without database");
       return;
     }
 
-    await mongoose.connect(mongoUrl, {
+    await mongoose.connect(config.mongodb.url, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
 
     console.log("✅ MongoDB connected successfully");
 
-    // Initialize models after connection
-    User = mongoose.model("User", userSchema);
-    Class = mongoose.model("Class", classSchema);
-    Product = mongoose.model("Product", productSchema);
+    // Initialize passport strategies after DB connection
+    try {
+      require("./passport/passportLocal");
+      console.log("✅ Passport strategies loaded");
+    } catch (error) {
+      console.log("⚠️  Passport strategies not found, using inline auth");
+    }
 
     // Add sample data if needed
     await addSampleData();
@@ -658,6 +128,50 @@ async function connectDatabase() {
 
 async function addSampleData() {
   try {
+    // Try to import models
+    let Class, Product;
+    try {
+      Class = require("./models/class");
+      Product = require("./models/product");
+    } catch (error) {
+      console.log("⚠️  Model files not found, using inline models");
+
+      // Define models inline if files don't exist
+      const classSchema = new mongoose.Schema(
+        {
+          title: { type: String, required: true },
+          classType: { type: String, required: true },
+          description: { type: String },
+          duration: { type: Number, required: true },
+          date: { type: Date, required: true },
+          time: { type: String, required: true },
+          maxStudents: { type: Number, required: true },
+          currentStudents: { type: Number, default: 0 },
+          price: { type: Number, required: true },
+          instructor: { type: String, required: true },
+          location: { type: String, default: "استخر اصلی" },
+          isActive: { type: Boolean, default: true },
+        },
+        { timestamps: true }
+      );
+
+      const productSchema = new mongoose.Schema(
+        {
+          name: { type: String, required: true },
+          price: { type: Number, required: true },
+          category: { type: String, required: true },
+          description: { type: String },
+          image: { type: String },
+          inStock: { type: Boolean, default: true },
+          isActive: { type: Boolean, default: true },
+        },
+        { timestamps: true }
+      );
+
+      Class = mongoose.model("Class", classSchema);
+      Product = mongoose.model("Product", productSchema);
+    }
+
     const classCount = await Class.countDocuments();
     const productCount = await Product.countDocuments();
 
@@ -717,23 +231,16 @@ async function addSampleData() {
   }
 }
 
-// ✅ 404 Handler
-app.use("*", (req, res) => {
-  res.status(404).json({
-    error: "Not Found",
-    path: req.originalUrl,
-    timestamp: new Date().toISOString(),
-  });
-});
+// ✅ Try to import existing routes, fallback to inline routes
+try {
+  app.use("/", require("./routes/index"));
+  console.log("✅ Using existing route structure");
+} catch (error) {
+  console.log("⚠️  Route files not found, using inline routes");
 
-// ✅ Error Handler
-app.use((error, req, res, next) => {
-  console.error("Error:", error.message);
-  res.status(500).json({
-    error: "Internal Server Error",
-    message: error.message,
-  });
-});
+  // Import inline routes as fallback
+  require("./inline-routes")(app, mongoose);
+}
 
 // ✅ Start Server
 const server = app.listen(port, "0.0.0.0", async () => {
