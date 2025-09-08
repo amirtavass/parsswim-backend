@@ -6,6 +6,8 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const MongoStore = require("connect-mongo");
 const { validationResult, check } = require("express-validator");
+const multer = require("multer");
+const path = require("path");
 
 require("dotenv").config();
 
