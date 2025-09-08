@@ -8,7 +8,7 @@ const MongoStore = require("connect-mongo");
 const { validationResult, check } = require("express-validator");
 const multer = require("multer");
 const path = require("path");
-const { mkdirp } = require("mkdirp");
+const fs = require("fs");
 
 require("dotenv").config();
 
@@ -85,12 +85,23 @@ const productSchema = new mongoose.Schema(
 // Models
 let User, Class, Product;
 
+// ✅ Create uploads directory function (replaces mkdirp)
+function ensureUploadDir(dirPath) {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+  } catch (error) {
+    console.log("Could not create upload directory:", error.message);
+  }
+}
+
 // ✅ Multer Configuration for File Uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    mkdirp("./public/uploads/images").then((made) => {
-      cb(null, "./public/uploads/images");
-    });
+    const uploadPath = "./public/uploads/images";
+    ensureUploadDir(uploadPath);
+    cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + "-" + file.originalname);
@@ -121,41 +132,266 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files
 app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
 
-// ✅ Session Configuration
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "your-secret-key",
-    resave: false,
-    saveUninitialized: false,
-    store: process.env.MONGODB_URL
-      ? MongoStore.create({
-          mongoUrl: process.env.MONGODB_URL,
-        })
-      : undefined,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    },
-  })
+// ✅ Session Configuration - FIXED:// server.js - Fixed version without passport dependency
+const express = require("express");
+const cors = require("cors");
+const session = require("express-session");
+const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
+const MongoStore = require("connect-mongo");
+const { validationResult, check } = require("express-validator");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+require("dotenv").config();
+
+console.log("🚀 Starting ParsSwim API Server...");
+
+const app = express();
+const port = process.env.PORT || 4000;
+
+// ✅ Database Models
+const userSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    phone: { type: String, required: true },
+    password: { type: String, required: true },
+    age: { type: Number },
+    balance: { type: Number, default: 0 },
+    swimmingType: { type: String, default: "normal" },
+    skillLevel: { type: String, default: "beginner" },
+    role: { type: String, default: "student" },
+  },
+  { timestamps: true }
 );
 
-// ✅ Admin credentials
-const ADMIN_USERS = [
+const classSchema = new mongoose.Schema(
   {
-    id: "admin1",
-    username: "admin",
-    password: bcrypt.hashSync("admin123", 8),
-    role: "admin",
+    title: { type: String, required: true },
+    classType: {
+      type: String,
+      enum: [
+        "کلاس خصوصی ۱۲ جلسه",
+        "کلاس پدر و فرزند",
+        "کلاس آمادگی مسابقات",
+        "سانس آزاد استخر",
+        "جلسه آزمایشی رایگان",
+      ],
+      required: true,
+    },
+    description: { type: String },
+    duration: { type: Number, required: true },
+    date: { type: Date, required: true },
+    time: { type: String, required: true },
+    maxStudents: { type: Number, required: true },
+    currentStudents: { type: Number, default: 0 },
+    price: { type: Number, required: true },
+    instructor: {
+      type: String,
+      enum: ["مربی اول", "مربی دوم", "هر دو مربی"],
+      required: true,
+    },
+    location: { type: String, default: "استخر اصلی" },
+    isActive: { type: Boolean, default: true },
   },
-];
+  { timestamps: true }
+);
+
+const productSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+    category: {
+      type: String,
+      enum: ["swimwear", "swimgoggles", "swimfins", "swimequipment"],
+      required: true,
+    },
+    description: { type: String },
+    image: { type: String },
+    inStock: { type: Boolean, default: true },
+    isActive: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+
+// Models
+let User, Class, Product;
+
+// ✅ Create uploads directory function (replaces mkdirp)
+function ensureUploadDir(dirPath) {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+  } catch (error) {
+    console.log("Could not create upload directory:", error.message);
+  }
+}
+
+// ✅ Multer Configuration for File Uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = "./public/uploads/images";
+    ensureUploadDir(uploadPath);
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+
+const upload = multer({ storage: storage });
+
+// ✅ CORS Configuration
+const corsOptions = {
+  origin: [
+    "https://parsswim.ir",
+    "http://localhost:3000",
+    "https// server.js - Fixed version without passport dependency
+const express = require("express");
+const cors = require("cors");
+const session = require("express-session");
+const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
+const MongoStore = require("connect-mongo");
+const { validationResult, check } = require("express-validator");
+const multer = require("multer");
+const path = require("path");
+const { mkdirp } = require("mkdirp");
+
+require("dotenv").config();
+
+console.log("🚀 Starting ParsSwim API Server...");
+
+const app = express();
+const port = process.env.PORT || 4000;
+
+// ✅ Database Models
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  phone: { type: String, required: true },
+  password: { type: String, required: true },
+  age: { type: Number },
+  balance: { type: Number, default: 0 },
+  swimmingType: { type: String, default: "normal" },
+  skillLevel: { type: String, default: "beginner" },
+  role: { type: String, default: "student" }
+}, { timestamps: true });
+
+const classSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  classType: { 
+    type: String, 
+    enum: [
+      "کلاس خصوصی ۱۲ جلسه",
+      "کلاس پدر و فرزند", 
+      "کلاس آمادگی مسابقات",
+      "سانس آزاد استخر",
+      "جلسه آزمایشی رایگان"
+    ],
+    required: true 
+  },
+  description: { type: String },
+  duration: { type: Number, required: true },
+  date: { type: Date, required: true },
+  time: { type: String, required: true },
+  maxStudents: { type: Number, required: true },
+  currentStudents: { type: Number, default: 0 },
+  price: { type: Number, required: true },
+  instructor: { 
+    type: String, 
+    enum: ["مربی اول", "مربی دوم", "هر دو مربی"],
+    required: true 
+  },
+  location: { type: String, default: "استخر اصلی" },
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
+
+const productSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  price: { type: Number, required: true },
+  category: { 
+    type: String, 
+    enum: ["swimwear", "swimgoggles", "swimfins", "swimequipment"],
+    required: true 
+  },
+  description: { type: String },
+  image: { type: String },
+  inStock: { type: Boolean, default: true },
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
+
+// Models
+let User, Class, Product;
+
+// ✅ Multer Configuration for File Uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    mkdirp("./public/uploads/images").then((made) => {
+      cb(null, "./public/uploads/images");
+    });
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+
+const upload = multer({ storage: storage });
+
+// ✅ CORS Configuration
+const corsOptions = {
+  origin: [
+    "https://parsswim.ir",
+    "http://localhost:3000",
+    "https://localhost:3000"
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// ✅ Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve static files
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
+// ✅ Session Configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || "your-secret-key",
+  resave: false,
+  saveUninitialized: false,
+  store: process.env.MONGODB_URL ? MongoStore.create({
+    mongoUrl: process.env.MONGODB_URL
+  }) : undefined,
+  cookie: {
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// ✅ Admin credentials
+const ADMIN_USERS = [{
+  id: "admin1",
+  username: "admin",
+  password: bcrypt.hashSync("admin123", 8),
+  role: "admin"
+}];
 
 // ✅ Helper Functions
 const requireAuth = (req, res, next) => {
   if (!req.session.userId) {
     return res.status(401).json({
       success: false,
-      message: "Authentication required",
+      message: "Authentication required"
     });
   }
   next();
@@ -165,7 +401,7 @@ const requireAdmin = (req, res, next) => {
   if (!req.session.isAdmin || !req.session.adminId) {
     return res.status(403).json({
       success: false,
-      message: "Admin access required",
+      message: "Admin access required"
     });
   }
   next();
@@ -174,28 +410,24 @@ const requireAdmin = (req, res, next) => {
 // ✅ Validation middleware
 const validateLogin = [
   check("name", "Username is required").not().isEmpty(),
-  check("password", "Password must be at least 5 characters").isLength({
-    min: 5,
-  }),
+  check("password", "Password must be at least 5 characters").isLength({ min: 5 })
 ];
 
 const validateRegister = [
   check("name", "Name is required").not().isEmpty(),
   check("email", "Valid email is required").isEmail(),
   check("phone", "Phone is required").not().isEmpty(),
-  check("password", "Password must be at least 5 characters").isLength({
-    min: 5,
-  }),
+  check("password", "Password must be at least 5 characters").isLength({ min: 5 })
 ];
 
 const validateClass = [
   check("title", "Title is required").not().isEmpty(),
   check("classType", "Valid class type required").isIn([
     "کلاس خصوصی ۱۲ جلسه",
-    "کلاس پدر و فرزند",
+    "کلاس پدر و فرزند", 
     "کلاس آمادگی مسابقات",
     "سانس آزاد استخر",
-    "جلسه آزمایشی رایگان",
+    "جلسه آزمایشی رایگان"
   ]),
   check("duration", "Duration must be positive").isInt({ min: 1 }),
   check("date", "Valid date required").isISO8601(),
@@ -203,21 +435,16 @@ const validateClass = [
   check("maxStudents", "Max students must be positive").isInt({ min: 1 }),
   check("price", "Price must be non-negative").isNumeric({ min: 0 }),
   check("instructor", "Valid instructor required").isIn([
-    "مربی اول",
-    "مربی دوم",
-    "هر دو مربی",
-  ]),
+    "مربی اول", "مربی دوم", "هر دو مربی"
+  ])
 ];
 
 const validateProduct = [
   check("name", "Product name is required").not().isEmpty(),
   check("price", "Price must be positive").isNumeric({ min: 0 }),
   check("category", "Valid category required").isIn([
-    "swimwear",
-    "swimgoggles",
-    "swimfins",
-    "swimequipment",
-  ]),
+    "swimwear", "swimgoggles", "swimfins", "swimequipment"
+  ])
 ];
 
 // ✅ Health Check Routes
@@ -228,17 +455,15 @@ app.get("/", (req, res) => {
     timestamp: new Date().toISOString(),
     port: port,
     environment: process.env.NODE_ENV || "development",
-    database:
-      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected"
   });
 });
 
 app.get("/health", (req, res) => {
-  res.json({
-    status: "healthy",
+  res.json({ 
+    status: "healthy", 
     uptime: process.uptime(),
-    database:
-      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected"
   });
 });
 
@@ -253,14 +478,14 @@ app.post("/auth/register", validateRegister, async (req, res) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array().map((err) => err.msg),
+        errors: errors.array().map(err => err.msg)
       });
     }
 
     if (!User) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -268,13 +493,13 @@ app.post("/auth/register", validateRegister, async (req, res) => {
 
     // Check existing user
     const existingUser = await User.findOne({
-      $or: [{ email }, { name }],
+      $or: [{ email }, { name }]
     });
 
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: "User already exists",
+        message: "User already exists"
       });
     }
 
@@ -286,7 +511,7 @@ app.post("/auth/register", validateRegister, async (req, res) => {
       phone,
       password: hashedPassword,
       age: age || null,
-      balance: 0,
+      balance: 0
     });
 
     await newUser.save();
@@ -297,7 +522,7 @@ app.post("/auth/register", validateRegister, async (req, res) => {
       id: newUser._id,
       name: newUser.name,
       email: newUser.email,
-      balance: newUser.balance,
+      balance: newUser.balance
     };
 
     res.json({
@@ -308,15 +533,16 @@ app.post("/auth/register", validateRegister, async (req, res) => {
         email: newUser.email,
         phone: newUser.phone,
         balance: newUser.balance,
-        skillLevel: newUser.skillLevel,
+        skillLevel: newUser.skillLevel
       },
-      message: "Registration successful",
+      message: "Registration successful"
     });
+
   } catch (error) {
     console.error("Registration error:", error);
     res.status(500).json({
       success: false,
-      message: "Registration failed: " + error.message,
+      message: "Registration failed: " + error.message
     });
   }
 });
@@ -327,14 +553,14 @@ app.post("/auth/login", validateLogin, async (req, res) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array().map((err) => err.msg),
+        errors: errors.array().map(err => err.msg)
       });
     }
 
     if (!User) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -342,13 +568,13 @@ app.post("/auth/login", validateLogin, async (req, res) => {
 
     // Find user
     const user = await User.findOne({
-      $or: [{ name }, { email: name }],
+      $or: [{ name }, { email: name }]
     });
 
     if (!user || !bcrypt.compareSync(password, user.password)) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: "Invalid credentials"
       });
     }
 
@@ -358,7 +584,7 @@ app.post("/auth/login", validateLogin, async (req, res) => {
       id: user._id,
       name: user.name,
       email: user.email,
-      balance: user.balance,
+      balance: user.balance
     };
 
     res.json({
@@ -369,15 +595,16 @@ app.post("/auth/login", validateLogin, async (req, res) => {
         email: user.email,
         phone: user.phone,
         balance: user.balance,
-        skillLevel: user.skillLevel,
+        skillLevel: user.skillLevel
       },
-      message: "Login successful",
+      message: "Login successful"
     });
+
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({
       success: false,
-      message: "Login failed",
+      message: "Login failed"
     });
   }
 });
@@ -387,7 +614,7 @@ app.get("/auth/me", async (req, res) => {
     if (!req.session.userId || !User) {
       return res.status(401).json({
         success: false,
-        message: "Not authenticated",
+        message: "Not authenticated"
       });
     }
 
@@ -395,7 +622,7 @@ app.get("/auth/me", async (req, res) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "User not found",
+        message: "User not found"
       });
     }
 
@@ -407,13 +634,14 @@ app.get("/auth/me", async (req, res) => {
         email: user.email,
         phone: user.phone,
         balance: user.balance,
-        skillLevel: user.skillLevel,
-      },
+        skillLevel: user.skillLevel
+      }
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error fetching user",
+      message: "Error fetching user"
     });
   }
 });
@@ -423,77 +651,74 @@ app.post("/auth/logout", (req, res) => {
     if (err) {
       return res.status(500).json({
         success: false,
-        message: "Logout failed",
+        message: "Logout failed"
       });
     }
     res.json({
       success: true,
-      message: "Logged out successfully",
+      message: "Logged out successfully"
     });
   });
 });
 
 // ✅ Admin Routes
-app.post(
-  "/admin/login",
-  [
-    check("username", "Username is required").not().isEmpty(),
-    check("password", "Password is required").not().isEmpty(),
-  ],
-  (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array().map((err) => err.msg),
-        });
-      }
-
-      const { username, password } = req.body;
-      const admin = ADMIN_USERS.find((a) => a.username === username);
-
-      if (!admin || !bcrypt.compareSync(password, admin.password)) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid admin credentials",
-        });
-      }
-
-      req.session.adminId = admin.id;
-      req.session.isAdmin = true;
-
-      res.json({
-        success: true,
-        admin: {
-          id: admin.id,
-          username: admin.username,
-          role: admin.role,
-        },
-        message: "Admin login successful",
-      });
-    } catch (error) {
-      res.status(500).json({
+app.post("/admin/login", [
+  check("username", "Username is required").not().isEmpty(),
+  check("password", "Password is required").not().isEmpty()
+], (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
         success: false,
-        message: "Admin login failed",
+        errors: errors.array().map(err => err.msg)
       });
     }
+
+    const { username, password } = req.body;
+    const admin = ADMIN_USERS.find(a => a.username === username);
+
+    if (!admin || !bcrypt.compareSync(password, admin.password)) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin credentials"
+      });
+    }
+
+    req.session.adminId = admin.id;
+    req.session.isAdmin = true;
+
+    res.json({
+      success: true,
+      admin: {
+        id: admin.id,
+        username: admin.username,
+        role: admin.role
+      },
+      message: "Admin login successful"
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Admin login failed"
+    });
   }
-);
+});
 
 app.get("/admin/me", (req, res) => {
   if (!req.session.isAdmin || !req.session.adminId) {
     return res.status(401).json({
       success: false,
-      message: "Not authenticated as admin",
+      message: "Not authenticated as admin"
     });
   }
 
-  const admin = ADMIN_USERS.find((a) => a.id === req.session.adminId);
+  const admin = ADMIN_USERS.find(a => a.id === req.session.adminId);
   if (!admin) {
     return res.status(401).json({
       success: false,
-      message: "Admin not found",
+      message: "Admin not found"
     });
   }
 
@@ -502,8 +727,8 @@ app.get("/admin/me", (req, res) => {
     admin: {
       id: admin.id,
       username: admin.username,
-      role: admin.role,
-    },
+      role: admin.role
+    }
   });
 });
 
@@ -512,7 +737,7 @@ app.post("/admin/logout", (req, res) => {
   req.session.isAdmin = null;
   res.json({
     success: true,
-    message: "Admin logged out successfully",
+    message: "Admin logged out successfully"
   });
 });
 
@@ -523,8 +748,8 @@ app.get("/test/admin", requireAdmin, (req, res) => {
     message: "Admin access working",
     session: {
       isAdmin: req.session.isAdmin,
-      adminId: req.session.adminId,
-    },
+      adminId: req.session.adminId
+    }
   });
 });
 
@@ -535,7 +760,7 @@ app.get("/classes", async (req, res) => {
       return res.json({
         success: true,
         data: [],
-        message: "Database not connected - sample data",
+        message: "Database not connected - sample data"
       });
     }
 
@@ -548,13 +773,14 @@ app.get("/classes", async (req, res) => {
     res.json({
       success: true,
       data: classes,
-      message: "Classes retrieved successfully",
+      message: "Classes retrieved successfully"
     });
+
   } catch (error) {
     console.error("Classes error:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching classes",
+      message: "Error fetching classes"
     });
   }
 });
@@ -565,25 +791,26 @@ app.get("/classes/available", async (req, res) => {
       return res.json({
         success: true,
         data: [],
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
     const classes = await Class.find({
       isActive: true,
       date: { $gte: new Date() },
-      $expr: { $lt: ["$currentStudents", "$maxStudents"] },
+      $expr: { $lt: ["$currentStudents", "$maxStudents"] }
     }).sort({ date: 1, time: 1 });
 
     res.json({
       success: true,
       data: classes,
-      message: "Available classes retrieved successfully",
+      message: "Available classes retrieved successfully"
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error fetching available classes",
+      message: "Error fetching available classes"
     });
   }
 });
@@ -593,7 +820,7 @@ app.get("/classes/:id", async (req, res) => {
     if (!Class) {
       return res.status(404).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -601,19 +828,20 @@ app.get("/classes/:id", async (req, res) => {
     if (!classItem) {
       return res.status(404).json({
         success: false,
-        message: "Class not found",
+        message: "Class not found"
       });
     }
 
     res.json({
       success: true,
       data: classItem,
-      message: "Class retrieved successfully",
+      message: "Class retrieved successfully"
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error fetching class",
+      message: "Error fetching class"
     });
   }
 });
@@ -624,14 +852,14 @@ app.post("/classes", requireAdmin, validateClass, async (req, res) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array().map((err) => err.msg),
+        errors: errors.array().map(err => err.msg)
       });
     }
 
     if (!Class) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -641,13 +869,14 @@ app.post("/classes", requireAdmin, validateClass, async (req, res) => {
     res.status(201).json({
       success: true,
       data: newClass,
-      message: "Class created successfully",
+      message: "Class created successfully"
     });
+
   } catch (error) {
     console.error("Create class error:", error);
     res.status(500).json({
       success: false,
-      message: "Error creating class: " + error.message,
+      message: "Error creating class: " + error.message
     });
   }
 });
@@ -658,14 +887,14 @@ app.put("/classes/:id", requireAdmin, validateClass, async (req, res) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array().map((err) => err.msg),
+        errors: errors.array().map(err => err.msg)
       });
     }
 
     if (!Class) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -678,19 +907,20 @@ app.put("/classes/:id", requireAdmin, validateClass, async (req, res) => {
     if (!updatedClass) {
       return res.status(404).json({
         success: false,
-        message: "Class not found",
+        message: "Class not found"
       });
     }
 
     res.json({
       success: true,
       data: updatedClass,
-      message: "Class updated successfully",
+      message: "Class updated successfully"
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error updating class",
+      message: "Error updating class"
     });
   }
 });
@@ -700,7 +930,7 @@ app.delete("/classes/:id", requireAdmin, async (req, res) => {
     if (!Class) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -709,18 +939,19 @@ app.delete("/classes/:id", requireAdmin, async (req, res) => {
     if (!deletedClass) {
       return res.status(404).json({
         success: false,
-        message: "Class not found",
+        message: "Class not found"
       });
     }
 
     res.json({
       success: true,
-      message: "Class deleted successfully",
+      message: "Class deleted successfully"
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error deleting class",
+      message: "Error deleting class"
     });
   }
 });
@@ -732,7 +963,7 @@ app.get("/products", async (req, res) => {
       return res.json({
         success: true,
         data: [],
-        message: "Database not connected - sample data",
+        message: "Database not connected - sample data"
       });
     }
 
@@ -745,13 +976,14 @@ app.get("/products", async (req, res) => {
     res.json({
       success: true,
       data: products,
-      message: "Products retrieved successfully",
+      message: "Products retrieved successfully"
     });
+
   } catch (error) {
     console.error("Products error:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching products",
+      message: "Error fetching products"
     });
   }
 });
@@ -761,7 +993,7 @@ app.get("/products/:id", async (req, res) => {
     if (!Product) {
       return res.status(404).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -769,19 +1001,20 @@ app.get("/products/:id", async (req, res) => {
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: "Product not found",
+        message: "Product not found"
       });
     }
 
     res.json({
       success: true,
       data: product,
-      message: "Product retrieved successfully",
+      message: "Product retrieved successfully"
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error fetching product",
+      message: "Error fetching product"
     });
   }
 });
@@ -792,14 +1025,14 @@ app.post("/products", requireAdmin, validateProduct, async (req, res) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array().map((err) => err.msg),
+        errors: errors.array().map(err => err.msg)
       });
     }
 
     if (!Product) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -809,13 +1042,14 @@ app.post("/products", requireAdmin, validateProduct, async (req, res) => {
     res.status(201).json({
       success: true,
       data: newProduct,
-      message: "Product created successfully",
+      message: "Product created successfully"
     });
+
   } catch (error) {
     console.error("Create product error:", error);
     res.status(500).json({
       success: false,
-      message: "Error creating product: " + error.message,
+      message: "Error creating product: " + error.message
     });
   }
 });
@@ -826,14 +1060,14 @@ app.put("/products/:id", requireAdmin, validateProduct, async (req, res) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        errors: errors.array().map((err) => err.msg),
+        errors: errors.array().map(err => err.msg)
       });
     }
 
     if (!Product) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -846,19 +1080,20 @@ app.put("/products/:id", requireAdmin, validateProduct, async (req, res) => {
     if (!updatedProduct) {
       return res.status(404).json({
         success: false,
-        message: "Product not found",
+        message: "Product not found"
       });
     }
 
     res.json({
       success: true,
       data: updatedProduct,
-      message: "Product updated successfully",
+      message: "Product updated successfully"
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error updating product",
+      message: "Error updating product"
     });
   }
 });
@@ -868,7 +1103,7 @@ app.delete("/products/:id", requireAdmin, async (req, res) => {
     if (!Product) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not connected"
       });
     }
 
@@ -877,18 +1112,19 @@ app.delete("/products/:id", requireAdmin, async (req, res) => {
     if (!deletedProduct) {
       return res.status(404).json({
         success: false,
-        message: "Product not found",
+        message: "Product not found"
       });
     }
 
     res.json({
       success: true,
-      message: "Product deleted successfully",
+      message: "Product deleted successfully"
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error deleting product",
+      message: "Error deleting product"
     });
   }
 });
@@ -902,7 +1138,7 @@ app.post("/upload/product", requireAdmin, (req, res) => {
       console.error("Multer error:", err);
       return res.status(400).json({
         success: false,
-        message: "File upload error: " + err.message,
+        message: "File upload error: " + err.message
       });
     }
 
@@ -910,7 +1146,7 @@ app.post("/upload/product", requireAdmin, (req, res) => {
       if (!req.file) {
         return res.status(400).json({
           success: false,
-          message: "No image file provided",
+          message: "No image file provided"
         });
       }
 
@@ -933,14 +1169,14 @@ app.post("/upload/product", requireAdmin, (req, res) => {
         file: {
           originalName: req.file.originalname,
           size: req.file.size,
-          mimetype: req.file.mimetype,
-        },
+          mimetype: req.file.mimetype
+        }
       });
     } catch (error) {
       console.error("Upload processing error:", error);
       res.status(500).json({
         success: false,
-        message: "Upload processing failed: " + error.message,
+        message: "Upload processing failed: " + error.message
       });
     }
   });
@@ -950,7 +1186,7 @@ app.post("/upload/product", requireAdmin, (req, res) => {
 async function connectDatabase() {
   try {
     const mongoUrl = process.env.MONGODB_URL;
-
+    
     if (!mongoUrl) {
       console.log("⚠️  No MONGODB_URL provided - running without database");
       return;
@@ -970,6 +1206,7 @@ async function connectDatabase() {
 
     // Add sample data if needed
     await addSampleData();
+
   } catch (error) {
     console.log("❌ MongoDB connection failed:", error.message);
     console.log("⚠️  Running without database - limited functionality");
@@ -992,7 +1229,7 @@ async function addSampleData() {
           time: "10:00",
           maxStudents: 8,
           price: 0,
-          instructor: "مربی اول",
+          instructor: "مربی اول"
         },
         {
           title: "کلاس خصوصی حرفه‌ای",
@@ -1003,7 +1240,7 @@ async function addSampleData() {
           time: "14:00",
           maxStudents: 1,
           price: 850000,
-          instructor: "مربی اول",
+          instructor: "مربی اول"
         },
         {
           title: "کلاس پدر و فرزند",
@@ -1014,8 +1251,8 @@ async function addSampleData() {
           time: "16:30",
           maxStudents: 6,
           price: 450000,
-          instructor: "هر دو مربی",
-        },
+          instructor: "هر دو مربی"
+        }
       ];
       await Class.insertMany(sampleClasses);
       console.log("✅ Sample classes added");
@@ -1029,7 +1266,7 @@ async function addSampleData() {
           category: "swimwear",
           description: "مایو ورزشی با کیفیت بالا",
           image: "/images/swimwear/swimwear-1.jpg",
-          inStock: true,
+          inStock: true
         },
         {
           name: "عینک شنا اسپیدو",
@@ -1037,7 +1274,7 @@ async function addSampleData() {
           category: "swimgoggles",
           description: "عینک شنا ضد مه",
           image: "/images/swimgoggles/goggles-1.jpg",
-          inStock: true,
+          inStock: true
         },
         {
           name: "فین شنا آرنا",
@@ -1045,7 +1282,7 @@ async function addSampleData() {
           category: "swimfins",
           description: "فین انعطاف‌پذیر برای تقویت عضلات پا",
           image: "/images/swimfin/fin-1.jpg",
-          inStock: true,
+          inStock: true
         },
         {
           name: "کیف شنا ورزشی",
@@ -1053,12 +1290,13 @@ async function addSampleData() {
           category: "swimequipment",
           description: "کیف مقاوم در برابر آب با جیب‌های متعدد",
           image: "/images/equipment/backpack-1.jpg",
-          inStock: true,
-        },
+          inStock: true
+        }
       ];
       await Product.insertMany(sampleProducts);
       console.log("✅ Sample products added");
     }
+
   } catch (error) {
     console.log("⚠️  Error adding sample data:", error.message);
   }
@@ -1070,7 +1308,7 @@ app.use("*", (req, res) => {
   res.status(404).json({
     error: "Not Found",
     path: req.originalUrl,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -1079,7 +1317,7 @@ app.use((error, req, res, next) => {
   console.error("Error:", error.message);
   res.status(500).json({
     error: "Internal Server Error",
-    message: error.message,
+    message: error.message
   });
 });
 
@@ -1087,7 +1325,7 @@ app.use((error, req, res, next) => {
 const server = app.listen(port, "0.0.0.0", async () => {
   console.log(`✅ Server running on port ${port}`);
   console.log(`✅ Environment: ${process.env.NODE_ENV || "development"}`);
-
+  
   // Connect to database after server starts
   await connectDatabase();
 });
