@@ -96,72 +96,83 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif/;
+    const extname = allowedTypes.test(
+      path.extname(file.originalname).toLowerCase()
+    );
+    const mimetype = allowedTypes.test(file.mimetype);
 
-// ✅ CORS Configuration
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+});
+
+// ✅ CORS Configuration - FIXED
 const corsOptions = {
-  origin: [
-    "https://parsswim.ir",
-    "http://localhost:3000",
-    "https://localhost:3000",
-  ],
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      "https://parsswim.ir",
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ];
+
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all origins in production for now
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie", "Set-Cookie"],
+  exposedHeaders: ["Set-Cookie"],
 };
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-// ✅ Middleware
+// ✅ Body Parser Middleware - MUST BE BEFORE SESSION
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Debug middleware to log all requests
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path} - ${new Date().toISOString()}`);
-  if (
-    req.method === "DELETE" ||
-    req.method === "POST" ||
-    req.method === "PUT"
-  ) {
-    console.log("Request details:", {
-      path: req.path,
-      method: req.method,
-      session: {
-        isAdmin: req.session?.isAdmin,
-        adminId: req.session?.adminId,
-        userId: req.session?.userId,
-      },
-      headers: {
-        "content-type": req.headers["content-type"],
-        cookie: req.headers.cookie ? "present" : "missing",
-      },
-    });
-  }
-  next();
-});
-
-// Serve static files
+// ✅ Static files
 app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
+app.use(express.static("public"));
 
-// ✅ Session Configuration - FIXED for Railway
+// ✅ Session Configuration - FIXED
+app.set("trust proxy", 1); // Trust first proxy for Railway
+
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "your-secret-key",
+    secret:
+      process.env.SESSION_SECRET || "your-secret-key-change-in-production",
     resave: false,
     saveUninitialized: false,
     store: process.env.MONGODB_URL
       ? MongoStore.create({
           mongoUrl: process.env.MONGODB_URL,
+          touchAfter: 24 * 3600, // lazy session update
         })
       : undefined,
     cookie: {
-      secure: false, // CHANGED: Set to false for Railway
+      secure: process.env.NODE_ENV === "production" ? true : false,
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      sameSite: "lax", // ADDED: Better cross-origin support
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      domain:
+        process.env.NODE_ENV === "production" ? ".parsswim.ir" : undefined,
     },
+    name: "parsswim.sid", // Custom session name
   })
 );
 
@@ -175,9 +186,22 @@ const ADMIN_USERS = [
   },
 ];
 
-// ✅ Helper Functions
+// ✅ Debug middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path} - Session ID: ${req.sessionID}`);
+  if (req.session) {
+    console.log("Session data:", {
+      isAdmin: req.session.isAdmin,
+      adminId: req.session.adminId,
+      userId: req.session.userId,
+    });
+  }
+  next();
+});
+
+// ✅ Helper Middleware Functions
 const requireAuth = (req, res, next) => {
-  if (!req.session.userId) {
+  if (!req.session || !req.session.userId) {
     return res.status(401).json({
       success: false,
       message: "Authentication required",
@@ -187,32 +211,22 @@ const requireAuth = (req, res, next) => {
 };
 
 const requireAdmin = (req, res, next) => {
-  console.log("Admin middleware check:", {
+  console.log("Checking admin access:", {
     sessionId: req.sessionID,
     isAdmin: req.session?.isAdmin,
     adminId: req.session?.adminId,
-    sessionKeys: Object.keys(req.session || {}),
-    cookies: req.headers.cookie ? "present" : "missing",
   });
 
-  if (!req.session.isAdmin || !req.session.adminId) {
-    console.log("Admin access denied - session check failed");
+  if (!req.session || !req.session.isAdmin || !req.session.adminId) {
     return res.status(403).json({
       success: false,
-      message: "Admin access required",
-      debug: {
-        isAdmin: req.session?.isAdmin,
-        adminId: req.session?.adminId,
-        sessionExists: !!req.session,
-      },
+      message: "Admin access required - Please login as admin",
     });
   }
-
-  console.log("Admin access granted");
   next();
 };
 
-// ✅ Validation middleware
+// ✅ Validation Middleware
 const validateLogin = [
   check("name", "Username is required").not().isEmpty(),
   check("password", "Password must be at least 5 characters").isLength({
@@ -265,29 +279,15 @@ const validateProduct = [
 app.get("/", (req, res) => {
   res.json({
     success: true,
-    message: "ParsSwim API is running on Railway!",
+    message: "ParsSwim API is running!",
     timestamp: new Date().toISOString(),
-    port: port,
     environment: process.env.NODE_ENV || "development",
     database:
       mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
 });
 
-app.get("/health", (req, res) => {
-  res.json({
-    status: "healthy",
-    uptime: process.uptime(),
-    database:
-      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-  });
-});
-
-app.get("/ping", (req, res) => {
-  res.status(200).send("pong");
-});
-
-// ✅ Auth Routes
+// ✅ User Authentication Routes
 app.post("/auth/register", validateRegister, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -298,16 +298,16 @@ app.post("/auth/register", validateRegister, async (req, res) => {
       });
     }
 
+    const { name, email, phone, password, age } = req.body;
+
     if (!User) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
-    const { name, email, phone, password, age } = req.body;
-
-    // Check existing user
+    // Check if user exists
     const existingUser = await User.findOne({
       $or: [{ email }, { name }],
     });
@@ -315,11 +315,11 @@ app.post("/auth/register", validateRegister, async (req, res) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: "User already exists",
+        message: "User already exists with this email or username",
       });
     }
 
-    // Create user
+    // Create new user
     const hashedPassword = bcrypt.hashSync(password, 8);
     const newUser = new User({
       name,
@@ -328,30 +328,38 @@ app.post("/auth/register", validateRegister, async (req, res) => {
       password: hashedPassword,
       age: age || null,
       balance: 0,
+      skillLevel: "beginner",
     });
 
     await newUser.save();
 
     // Set session
-    req.session.userId = newUser._id;
+    req.session.userId = newUser._id.toString();
     req.session.user = {
-      id: newUser._id,
+      id: newUser._id.toString(),
       name: newUser.name,
       email: newUser.email,
       balance: newUser.balance,
     };
 
-    res.json({
-      success: true,
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone,
-        balance: newUser.balance,
-        skillLevel: newUser.skillLevel,
-      },
-      message: "Registration successful",
+    // Save session before sending response
+    req.session.save((err) => {
+      if (err) {
+        console.error("Session save error:", err);
+      }
+
+      res.json({
+        success: true,
+        user: {
+          id: newUser._id,
+          name: newUser.name,
+          email: newUser.email,
+          phone: newUser.phone,
+          balance: newUser.balance,
+          skillLevel: newUser.skillLevel,
+        },
+        message: "Registration successful",
+      });
     });
   } catch (error) {
     console.error("Registration error:", error);
@@ -372,16 +380,16 @@ app.post("/auth/login", validateLogin, async (req, res) => {
       });
     }
 
+    const { name, password } = req.body;
+
     if (!User) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
-    const { name, password } = req.body;
-
-    // Find user
+    // Find user by name or email
     const user = await User.findOne({
       $or: [{ name }, { email: name }],
     });
@@ -394,41 +402,55 @@ app.post("/auth/login", validateLogin, async (req, res) => {
     }
 
     // Set session
-    req.session.userId = user._id;
+    req.session.userId = user._id.toString();
     req.session.user = {
-      id: user._id,
+      id: user._id.toString(),
       name: user.name,
       email: user.email,
       balance: user.balance,
     };
 
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        balance: user.balance,
-        skillLevel: user.skillLevel,
-      },
-      message: "Login successful",
+    // Save session before sending response
+    req.session.save((err) => {
+      if (err) {
+        console.error("Session save error:", err);
+      }
+
+      res.json({
+        success: true,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          balance: user.balance,
+          skillLevel: user.skillLevel,
+        },
+        message: "Login successful",
+      });
     });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({
       success: false,
-      message: "Login failed",
+      message: "Login failed: " + error.message,
     });
   }
 });
 
 app.get("/auth/me", async (req, res) => {
   try {
-    if (!req.session.userId || !User) {
+    if (!req.session || !req.session.userId) {
       return res.status(401).json({
         success: false,
         message: "Not authenticated",
+      });
+    }
+
+    if (!User) {
+      return res.status(500).json({
+        success: false,
+        message: "Database not initialized",
       });
     }
 
@@ -452,9 +474,10 @@ app.get("/auth/me", async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Auth check error:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching user",
+      message: "Error fetching user data",
     });
   }
 });
@@ -467,6 +490,7 @@ app.post("/auth/logout", (req, res) => {
         message: "Logout failed",
       });
     }
+    res.clearCookie("parsswim.sid");
     res.json({
       success: true,
       message: "Logged out successfully",
@@ -481,16 +505,8 @@ app.post(
     check("username", "Username is required").not().isEmpty(),
     check("password", "Password is required").not().isEmpty(),
   ],
-  (req, res) => {
+  async (req, res) => {
     try {
-      console.log("Admin login attempt:", {
-        username: req.body.username,
-        sessionBefore: {
-          isAdmin: req.session?.isAdmin,
-          adminId: req.session?.adminId,
-        },
-      });
-
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -500,65 +516,67 @@ app.post(
       }
 
       const { username, password } = req.body;
+
+      // Find admin user
       const admin = ADMIN_USERS.find((a) => a.username === username);
 
       if (!admin || !bcrypt.compareSync(password, admin.password)) {
-        console.log("Admin login failed - invalid credentials");
         return res.status(401).json({
           success: false,
           message: "Invalid admin credentials",
         });
       }
 
+      // Clear any existing user session
+      if (req.session.userId) {
+        delete req.session.userId;
+        delete req.session.user;
+      }
+
       // Set admin session
       req.session.adminId = admin.id;
       req.session.isAdmin = true;
 
-      console.log("Admin login successful:", {
-        adminId: admin.id,
-        sessionAfter: {
-          isAdmin: req.session.isAdmin,
-          adminId: req.session.adminId,
-          sessionId: req.sessionID,
-        },
-      });
+      // Save session before sending response
+      req.session.save((err) => {
+        if (err) {
+          console.error("Admin session save error:", err);
+          return res.status(500).json({
+            success: false,
+            message: "Session save failed",
+          });
+        }
 
-      res.json({
-        success: true,
-        admin: {
-          id: admin.id,
-          username: admin.username,
-          role: admin.role,
-        },
-        message: "Admin login successful",
+        console.log("Admin logged in successfully:", {
+          adminId: admin.id,
+          sessionId: req.sessionID,
+        });
+
+        res.json({
+          success: true,
+          admin: {
+            id: admin.id,
+            username: admin.username,
+            role: admin.role,
+          },
+          message: "Admin login successful",
+        });
       });
     } catch (error) {
       console.error("Admin login error:", error);
       res.status(500).json({
         success: false,
-        message: "Admin login failed",
+        message: "Admin login failed: " + error.message,
       });
     }
   }
 );
 
 app.get("/admin/me", (req, res) => {
-  console.log("Admin /me check:", {
-    sessionId: req.sessionID,
-    isAdmin: req.session?.isAdmin,
-    adminId: req.session?.adminId,
-    sessionKeys: Object.keys(req.session || {}),
-  });
-
-  if (!req.session.isAdmin || !req.session.adminId) {
+  if (!req.session || !req.session.isAdmin || !req.session.adminId) {
     return res.status(401).json({
       success: false,
       message: "Not authenticated as admin",
-      debug: {
-        isAdmin: req.session?.isAdmin,
-        adminId: req.session?.adminId,
-        sessionExists: !!req.session,
-      },
     });
   }
 
@@ -581,34 +599,28 @@ app.get("/admin/me", (req, res) => {
 });
 
 app.post("/admin/logout", (req, res) => {
-  req.session.adminId = null;
-  req.session.isAdmin = null;
-  res.json({
-    success: true,
-    message: "Admin logged out successfully",
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({
+        success: false,
+        message: "Logout failed",
+      });
+    }
+    res.clearCookie("parsswim.sid");
+    res.json({
+      success: true,
+      message: "Admin logged out successfully",
+    });
   });
 });
 
-// ✅ Test route for debugging admin access
-app.get("/test/admin", requireAdmin, (req, res) => {
-  res.json({
-    success: true,
-    message: "Admin access working",
-    session: {
-      isAdmin: req.session.isAdmin,
-      adminId: req.session.adminId,
-    },
-  });
-});
-
-// ✅ Classes Routes
+// ✅ Class Routes
 app.get("/classes", async (req, res) => {
   try {
     if (!Class) {
-      return res.json({
-        success: true,
-        data: [],
-        message: "Database not connected - sample data",
+      return res.status(500).json({
+        success: false,
+        message: "Database not initialized",
       });
     }
 
@@ -624,7 +636,7 @@ app.get("/classes", async (req, res) => {
       message: "Classes retrieved successfully",
     });
   } catch (error) {
-    console.error("Classes error:", error);
+    console.error("Get classes error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching classes",
@@ -635,10 +647,9 @@ app.get("/classes", async (req, res) => {
 app.get("/classes/available", async (req, res) => {
   try {
     if (!Class) {
-      return res.json({
-        success: true,
-        data: [],
-        message: "Database not connected",
+      return res.status(500).json({
+        success: false,
+        message: "Database not initialized",
       });
     }
 
@@ -651,9 +662,9 @@ app.get("/classes/available", async (req, res) => {
     res.json({
       success: true,
       data: classes,
-      message: "Available classes retrieved successfully",
     });
   } catch (error) {
+    console.error("Get available classes error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching available classes",
@@ -664,9 +675,9 @@ app.get("/classes/available", async (req, res) => {
 app.get("/classes/:id", async (req, res) => {
   try {
     if (!Class) {
-      return res.status(404).json({
+      return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
@@ -681,9 +692,9 @@ app.get("/classes/:id", async (req, res) => {
     res.json({
       success: true,
       data: classItem,
-      message: "Class retrieved successfully",
     });
   } catch (error) {
+    console.error("Get class error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching class",
@@ -704,7 +715,7 @@ app.post("/classes", requireAdmin, validateClass, async (req, res) => {
     if (!Class) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
@@ -738,14 +749,14 @@ app.put("/classes/:id", requireAdmin, validateClass, async (req, res) => {
     if (!Class) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
     const updatedClass = await Class.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
-      { new: true }
+      req.body,
+      { new: true, runValidators: true }
     );
 
     if (!updatedClass) {
@@ -761,37 +772,31 @@ app.put("/classes/:id", requireAdmin, validateClass, async (req, res) => {
       message: "Class updated successfully",
     });
   } catch (error) {
+    console.error("Update class error:", error);
     res.status(500).json({
       success: false,
-      message: "Error updating class",
+      message: "Error updating class: " + error.message,
     });
   }
 });
 
 app.delete("/classes/:id", requireAdmin, async (req, res) => {
   try {
-    console.log("DELETE /classes/:id called with ID:", req.params.id);
-
     if (!Class) {
-      console.log("Class model not available");
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
-    console.log("Attempting to delete class with ID:", req.params.id);
     const deletedClass = await Class.findByIdAndDelete(req.params.id);
-
     if (!deletedClass) {
-      console.log("Class not found for ID:", req.params.id);
       return res.status(404).json({
         success: false,
         message: "Class not found",
       });
     }
 
-    console.log("Class deleted successfully:", deletedClass._id);
     res.json({
       success: true,
       message: "Class deleted successfully",
@@ -805,14 +810,13 @@ app.delete("/classes/:id", requireAdmin, async (req, res) => {
   }
 });
 
-// ✅ Products Routes
+// ✅ Product Routes
 app.get("/products", async (req, res) => {
   try {
     if (!Product) {
-      return res.json({
-        success: true,
-        data: [],
-        message: "Database not connected - sample data",
+      return res.status(500).json({
+        success: false,
+        message: "Database not initialized",
       });
     }
 
@@ -821,14 +825,14 @@ app.get("/products", async (req, res) => {
       filter.category = req.query.category;
     }
 
-    const products = await Product.find(filter).sort({ createdAt: -1 });
+    const products = await Product.find(filter);
     res.json({
       success: true,
       data: products,
       message: "Products retrieved successfully",
     });
   } catch (error) {
-    console.error("Products error:", error);
+    console.error("Get products error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching products",
@@ -839,9 +843,9 @@ app.get("/products", async (req, res) => {
 app.get("/products/:id", async (req, res) => {
   try {
     if (!Product) {
-      return res.status(404).json({
+      return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
@@ -856,9 +860,9 @@ app.get("/products/:id", async (req, res) => {
     res.json({
       success: true,
       data: product,
-      message: "Product retrieved successfully",
     });
   } catch (error) {
+    console.error("Get product error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching product",
@@ -879,7 +883,7 @@ app.post("/products", requireAdmin, validateProduct, async (req, res) => {
     if (!Product) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
@@ -913,14 +917,14 @@ app.put("/products/:id", requireAdmin, validateProduct, async (req, res) => {
     if (!Product) {
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
-      { new: true }
+      req.body,
+      { new: true, runValidators: true }
     );
 
     if (!updatedProduct) {
@@ -936,37 +940,31 @@ app.put("/products/:id", requireAdmin, validateProduct, async (req, res) => {
       message: "Product updated successfully",
     });
   } catch (error) {
+    console.error("Update product error:", error);
     res.status(500).json({
       success: false,
-      message: "Error updating product",
+      message: "Error updating product: " + error.message,
     });
   }
 });
 
 app.delete("/products/:id", requireAdmin, async (req, res) => {
   try {
-    console.log("DELETE /products/:id called with ID:", req.params.id);
-
     if (!Product) {
-      console.log("Product model not available");
       return res.status(500).json({
         success: false,
-        message: "Database not connected",
+        message: "Database not initialized",
       });
     }
 
-    console.log("Attempting to delete product with ID:", req.params.id);
     const deletedProduct = await Product.findByIdAndDelete(req.params.id);
-
     if (!deletedProduct) {
-      console.log("Product not found for ID:", req.params.id);
       return res.status(404).json({
         success: false,
         message: "Product not found",
       });
     }
 
-    console.log("Product deleted successfully:", deletedProduct._id);
     res.json({
       success: true,
       message: "Product deleted successfully",
@@ -980,10 +978,8 @@ app.delete("/products/:id", requireAdmin, async (req, res) => {
   }
 });
 
-// ✅ Upload Routes
+// ✅ Upload Route - FIXED
 app.post("/upload/product", requireAdmin, (req, res) => {
-  console.log("Upload attempt - Admin check passed");
-
   const uploadSingle = upload.single("image");
 
   uploadSingle(req, res, (err) => {
@@ -991,7 +987,7 @@ app.post("/upload/product", requireAdmin, (req, res) => {
       console.error("Multer error:", err);
       return res.status(400).json({
         success: false,
-        message: "File upload error: " + err.message,
+        message: err.message || "File upload error",
       });
     }
 
@@ -1005,12 +1001,14 @@ app.post("/upload/product", requireAdmin, (req, res) => {
 
       console.log("File uploaded successfully:", req.file);
 
-      // Return proper image path - FIXED: Better path handling
+      // Create proper image path
       let imagePath = req.file.path.replace(/\\/g, "/");
 
-      // Remove 'public' from the beginning if it exists
+      // Remove 'public' from the beginning
       if (imagePath.startsWith("public/")) {
         imagePath = imagePath.substring(6);
+      } else if (imagePath.startsWith("./public/")) {
+        imagePath = imagePath.substring(8);
       }
 
       // Ensure path starts with single slash
@@ -1018,11 +1016,9 @@ app.post("/upload/product", requireAdmin, (req, res) => {
         imagePath = "/" + imagePath;
       }
 
-      console.log("Final image path:", imagePath);
+      console.log("Returning image path:", imagePath);
 
-      // FIXED: Ensure we always return valid JSON with explicit headers
-      res.setHeader("Content-Type", "application/json");
-      const response = {
+      res.json({
         success: true,
         imagePath: imagePath,
         message: "Image uploaded successfully",
@@ -1031,9 +1027,7 @@ app.post("/upload/product", requireAdmin, (req, res) => {
           size: req.file.size,
           mimetype: req.file.mimetype,
         },
-      };
-
-      res.status(200).json(response);
+      });
     } catch (error) {
       console.error("Upload processing error:", error);
       res.status(500).json({
@@ -1047,13 +1041,10 @@ app.post("/upload/product", requireAdmin, (req, res) => {
 // ✅ Database Connection
 async function connectDatabase() {
   try {
-    const mongoUrl = process.env.MONGODB_URL;
+    const mongoUrl =
+      process.env.MONGODB_URL || "mongodb://localhost:27017/parsswim";
 
-    if (!mongoUrl) {
-      console.log("⚠️  No MONGODB_URL provided - running without database");
-      return;
-    }
-
+    console.log("🔄 Connecting to MongoDB...");
     await mongoose.connect(mongoUrl, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
@@ -1066,143 +1057,42 @@ async function connectDatabase() {
     Class = mongoose.model("Class", classSchema);
     Product = mongoose.model("Product", productSchema);
 
-    // Add sample data if needed
-    await addSampleData();
+    console.log("✅ Models initialized");
   } catch (error) {
-    console.log("❌ MongoDB connection failed:", error.message);
-    console.log("⚠️  Running without database - limited functionality");
+    console.error("❌ MongoDB connection error:", error);
+    // Don't exit, allow server to run without database
   }
 }
 
-async function addSampleData() {
-  try {
-    const classCount = await Class.countDocuments();
-    const productCount = await Product.countDocuments();
-
-    if (classCount === 0) {
-      const sampleClasses = [
-        {
-          title: "کلاس شنای مبتدی",
-          classType: "جلسه آزمایشی رایگان",
-          description: "کلاس رایگان برای تازه واردان",
-          duration: 60,
-          date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          time: "10:00",
-          maxStudents: 8,
-          price: 0,
-          instructor: "مربی اول",
-        },
-        {
-          title: "کلاس خصوصی حرفه‌ای",
-          classType: "کلاس خصوصی ۱۲ جلسه",
-          description: "آموزش تخصصی و شخصی‌سازی شده",
-          duration: 90,
-          date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-          time: "14:00",
-          maxStudents: 1,
-          price: 850000,
-          instructor: "مربی اول",
-        },
-        {
-          title: "کلاس پدر و فرزند",
-          classType: "کلاس پدر و فرزند",
-          description: "تجربه شنا با خانواده",
-          duration: 75,
-          date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-          time: "16:30",
-          maxStudents: 6,
-          price: 450000,
-          instructor: "هر دو مربی",
-        },
-      ];
-      await Class.insertMany(sampleClasses);
-      console.log("✅ Sample classes added");
-    }
-
-    if (productCount === 0) {
-      const sampleProducts = [
-        {
-          name: "مایو حرفه‌ای نایک",
-          price: 450000,
-          category: "swimwear",
-          description: "مایو ورزشی با کیفیت بالا",
-          image: "/images/swimwear/swimwear-1.jpg",
-          inStock: true,
-        },
-        {
-          name: "عینک شنا اسپیدو",
-          price: 180000,
-          category: "swimgoggles",
-          description: "عینک شنا ضد مه",
-          image: "/images/swimgoggles/goggles-1.jpg",
-          inStock: true,
-        },
-        {
-          name: "فین شنا آرنا",
-          price: 320000,
-          category: "swimfins",
-          description: "فین انعطاف‌پذیر برای تقویت عضلات پا",
-          image: "/images/swimfin/fin-1.jpg",
-          inStock: true,
-        },
-        {
-          name: "کیف شنا ورزشی",
-          price: 125000,
-          category: "swimequipment",
-          description: "کیف مقاوم در برابر آب با جیب‌های متعدد",
-          image: "/images/equipment/backpack-1.jpg",
-          inStock: true,
-        },
-      ];
-      await Product.insertMany(sampleProducts);
-      console.log("✅ Sample products added");
-    }
-  } catch (error) {
-    console.log("⚠️  Error adding sample data:", error.message);
-  }
-}
-
-// ✅ 404 Handler
-app.use("*", (req, res) => {
-  console.log("404:", req.method, req.originalUrl);
-  res.status(404).json({
-    error: "Not Found",
-    path: req.originalUrl,
-    timestamp: new Date().toISOString(),
+// ✅ Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error("Error:", err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal server error",
   });
 });
 
-// ✅ Error Handler
-app.use((error, req, res, next) => {
-  console.error("Error:", error.message);
-  res.status(500).json({
-    error: "Internal Server Error",
-    message: error.message,
+// ✅ 404 Handler
+app.use("*", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+    path: req.originalUrl,
   });
 });
 
 // ✅ Start Server
-const server = app.listen(port, "0.0.0.0", async () => {
-  console.log(`✅ Server running on port ${port}`);
-  console.log(`✅ Environment: ${process.env.NODE_ENV || "development"}`);
-
-  // Connect to database after server starts
+async function startServer() {
   await connectDatabase();
-});
 
-// ✅ Graceful Shutdown
-const gracefulShutdown = () => {
-  console.log("Shutting down gracefully...");
-  server.close(() => {
-    console.log("Server closed");
-    mongoose.connection.close(false, () => {
-      console.log("MongoDB connection closed");
-      process.exit(0);
-    });
+  app.listen(port, () => {
+    console.log(`🚀 Server running on port ${port}`);
+    console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
+    console.log(`🔗 API URL: http://localhost:${port}`);
   });
-};
+}
 
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
+startServer();
 
 module.exports = app;
