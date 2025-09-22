@@ -16,73 +16,10 @@ console.log("🚀 Starting ParsSwim API Server...");
 const app = express();
 const port = process.env.PORT || 4000;
 
-// ✅ Database Models
-const userSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    phone: { type: String, required: true },
-    password: { type: String, required: true },
-    age: { type: Number },
-    balance: { type: Number, default: 0 },
-    swimmingType: { type: String, default: "normal" },
-    skillLevel: { type: String, default: "beginner" },
-    role: { type: String, default: "student" },
-  },
-  { timestamps: true }
-);
-
-const classSchema = new mongoose.Schema(
-  {
-    title: { type: String, required: true },
-    classType: {
-      type: String,
-      enum: [
-        "کلاس خصوصی ۱۲ جلسه",
-        "کلاس پدر و فرزند",
-        "کلاس آمادگی مسابقات",
-        "سانس آزاد استخر",
-        "جلسه آزمایشی رایگان",
-      ],
-      required: true,
-    },
-    description: { type: String },
-    duration: { type: Number, required: true },
-    date: { type: Date, required: true },
-    time: { type: String, required: true },
-    maxStudents: { type: Number, required: true },
-    currentStudents: { type: Number, default: 0 },
-    price: { type: Number, required: true },
-    instructor: {
-      type: String,
-      enum: ["مربی اول", "مربی دوم", "هر دو مربی"],
-      required: true,
-    },
-    location: { type: String, default: "استخر اصلی" },
-    isActive: { type: Boolean, default: true },
-  },
-  { timestamps: true }
-);
-
-const productSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true },
-    price: { type: Number, required: true },
-    category: {
-      type: String,
-      enum: ["swimwear", "swimgoggles", "swimfins", "swimequipment"],
-      required: true,
-    },
-    description: { type: String },
-    image: { type: String },
-    inStock: { type: Boolean, default: true },
-    isActive: { type: Boolean, default: true },
-  },
-  { timestamps: true }
-);
-
 // Models
-let User, Class, Product;
+const User = require("./models/user");
+const Class = require("./models/class");
+const Product = require("./models/product");
 
 // ✅ Multer Configuration for File Uploads
 const storage = multer.diskStorage({
@@ -165,10 +102,10 @@ app.use(
         })
       : undefined,
     cookie: {
-      secure: process.env.NODE_ENV === "production" ? true : false,
+      secure: false,
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      sameSite: "lax",
       domain:
         process.env.NODE_ENV === "production" ? ".parsswim.ir" : undefined,
     },
@@ -1051,11 +988,6 @@ async function connectDatabase() {
     });
 
     console.log("✅ MongoDB connected successfully");
-
-    // Initialize models after connection
-    User = mongoose.model("User", userSchema);
-    Class = mongoose.model("Class", classSchema);
-    Product = mongoose.model("Product", productSchema);
 
     console.log("✅ Models initialized");
   } catch (error) {
