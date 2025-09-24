@@ -12,16 +12,16 @@ class ClassController extends controller {
       if (req.query.classType) {
         filter.classType = req.query.classType;
       }
-      if (req.query.skillLevel) {
-        filter.skillLevel = req.query.skillLevel;
-      }
-      if (req.query.date) {
-        // Filter by specific date
-        const startDate = new Date(req.query.date);
-        const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + 1);
-        filter.date = { $gte: startDate, $lt: endDate };
-      }
+      // if (req.query.skillLevel) {
+      //   filter.skillLevel = req.query.skillLevel;
+      // }
+      // if (req.query.date) {
+      //   // Filter by specific date
+      //   const startDate = new Date(req.query.date);
+      //   const endDate = new Date(startDate);
+      //   endDate.setDate(endDate.getDate() + 1);
+      //   filter.date = { $gte: startDate, $lt: endDate };
+      // }
 
       const classes = await Class.find(filter).sort({ date: 1, time: 1 });
 
@@ -30,8 +30,12 @@ class ClassController extends controller {
         data: classes,
         message: "Classes retrieved successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Get classes error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching classes",
+      });
     }
   }
 
@@ -52,8 +56,12 @@ class ClassController extends controller {
         data: classItem,
         message: "Class retrieved successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Get class error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching class",
+      });
     }
   }
 
@@ -68,23 +76,24 @@ class ClassController extends controller {
           message: "Validation failed",
         });
       }
+      const newClass = new Class(req.body);
 
-      const newClass = new Class({
-        title: req.body.title,
-        classType: req.body.classType,
-        description: req.body.description,
-        duration: req.body.duration,
-        skillLevel: req.body.skillLevel,
-        date: req.body.date,
-        time: req.body.time,
-        maxStudents: req.body.maxStudents,
-        price: req.body.price,
-        requiresRegistration: req.body.requiresRegistration,
-        instructor: req.body.instructor,
-        location: req.body.location,
-        notes: req.body.notes,
-        equipment: req.body.equipment || [],
-      });
+      // const newClass = new Class({
+      //   title: req.body.title,
+      //   classType: req.body.classType,
+      //   description: req.body.description,
+      //   duration: req.body.duration,
+      //   skillLevel: req.body.skillLevel,
+      //   date: req.body.date,
+      //   time: req.body.time,
+      //   maxStudents: req.body.maxStudents,
+      //   price: req.body.price,
+      //   requiresRegistration: req.body.requiresRegistration,
+      //   instructor: req.body.instructor,
+      //   location: req.body.location,
+      //   notes: req.body.notes,
+      //   equipment: req.body.equipment || [],
+      // });
 
       await newClass.save();
 
@@ -93,8 +102,12 @@ class ClassController extends controller {
         data: newClass,
         message: "Class created successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Create class error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error creating class: " + error.message,
+      });
     }
   }
 
@@ -112,8 +125,8 @@ class ClassController extends controller {
 
       const updatedClass = await Class.findByIdAndUpdate(
         req.params.id,
-        { $set: req.body },
-        { new: true }
+        req.body,
+        { new: true, runValidators: true }
       );
 
       if (!updatedClass) {
@@ -128,8 +141,12 @@ class ClassController extends controller {
         data: updatedClass,
         message: "Class updated successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Update class error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error updating class: " + error.message,
+      });
     }
   }
 
@@ -149,8 +166,12 @@ class ClassController extends controller {
         success: true,
         message: "Class deleted successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Delete class error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error deleting class: " + error.message,
+      });
     }
   }
 
@@ -168,8 +189,12 @@ class ClassController extends controller {
         data: classes,
         message: "Available classes retrieved successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Get available classes error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching available classes",
+      });
     }
   }
 }

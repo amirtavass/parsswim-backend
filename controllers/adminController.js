@@ -45,7 +45,11 @@ class AdminController extends controller {
         message: "Admin login successful",
       });
     } catch (err) {
-      next(err);
+      console.error("Admin login error:", err);
+      res.status(500).json({
+        success: false,
+        message: "Admin login failed: " + err.message,
+      });
     }
   }
 
@@ -76,17 +80,36 @@ class AdminController extends controller {
     }
   }
 
+  // async logout(req, res, next) {
+  //   try {
+  //     req.session.adminId = null;
+  //     req.session.isAdmin = null;
+
+  //     res.json({
+  //       success: true,
+  //       message: "Admin logged out successfully",
+  //     });
+  //   } catch (err) {
+  //     next(err);
+  //   }
+  // }
   async logout(req, res, next) {
     try {
-      req.session.adminId = null;
-      req.session.isAdmin = null;
-
-      res.json({
-        success: true,
-        message: "Admin logged out successfully",
+      req.session.destroy((err) => {
+        if (err) {
+          return res.status(500).json({
+            success: false,
+            message: "Logout failed",
+          });
+        }
+        res.clearCookie("parsswim.sid");
+        res.json({
+          success: true,
+          message: "Admin logged out successfully",
+        });
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      next(error);
     }
   }
 }

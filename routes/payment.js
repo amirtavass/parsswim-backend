@@ -99,4 +99,55 @@ router.get("/cart-callback", async (req, res) => {
   }
 });
 
+// Balance payment callback
+router.get("/balance-callback", async (req, res) => {
+  try {
+    if (req.query.Status && req.query.Status !== "OK") {
+      return res.redirect("http://localhost:3000/dashboard?payment=failed");
+    }
+
+    let paymentRecord = await payment.findOne({
+      resnumber: req.query.Authority,
+    });
+
+    if (!paymentRecord) {
+      return res.redirect("http://localhost:3000/dashboard?payment=notfound");
+    }
+
+    let params = {
+      merchant_id: "12345678-1234-1234-1234-123456789012",
+      amount: paymentRecord.amount,
+      authority: req.query.Authority,
+    };
+
+    const response = await axios.post(
+      "https://sandbox.zarinpal.com/pg/v4/payment/verify.json",
+      params
+    );
+
+    if (
+      response.data.data &&
+      (response.data.data.code === 100 || response.data.data.code === 101)
+    ) {
+      paymentRecord.payment = true;
+      await paymentRecord.save();
+
+      // Update user balance
+      const User = require("../models/user");
+      await User.findByIdAndUpdate(paymentRecord.user, {
+        $inc: { balance: paymentRecord.amount },
+      });
+
+      res.redirect(
+        "http://localhost:3000/dashboard?payment=success&type=balance"
+      );
+    } else {
+      res.redirect("http://localhost:3000/dashboard?payment=failed");
+    }
+  } catch (err) {
+    console.error("Balance payment callback error:", err);
+    res.redirect("http://localhost:3000/dashboard?payment=error");
+  }
+});
+
 module.exports = router;

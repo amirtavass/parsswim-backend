@@ -20,8 +20,12 @@ class ProductController extends controller {
         data: products,
         message: "Products retrieved successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Get products error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching products",
+      });
     }
   }
 
@@ -42,8 +46,12 @@ class ProductController extends controller {
         data: product,
         message: "Product retrieved successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Get product error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching product",
+      });
     }
   }
 
@@ -58,19 +66,20 @@ class ProductController extends controller {
           message: "Validation failed",
         });
       }
+      const newProduct = new Product(req.body);
 
-      const newProduct = new Product({
-        name: req.body.name,
-        price: req.body.price,
-        category: req.body.category,
-        description: req.body.description,
-        image: req.body.image,
-        inStock: req.body.inStock !== undefined ? req.body.inStock : true,
-        quantity: req.body.quantity || 0,
-        brand: req.body.brand,
-        size: req.body.size,
-        color: req.body.color,
-      });
+      // const newProduct = new Product({
+      //   name: req.body.name,
+      //   price: req.body.price,
+      //   category: req.body.category,
+      //   description: req.body.description,
+      //   image: req.body.image,
+      //   inStock: req.body.inStock !== undefined ? req.body.inStock : true,
+      //   quantity: req.body.quantity || 0,
+      //   brand: req.body.brand,
+      //   size: req.body.size,
+      //   color: req.body.color,
+      // });
 
       await newProduct.save();
 
@@ -79,8 +88,12 @@ class ProductController extends controller {
         data: newProduct,
         message: "Product created successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Create product error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error creating product: " + error.message,
+      });
     }
   }
 
@@ -98,8 +111,8 @@ class ProductController extends controller {
 
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
-        { $set: req.body },
-        { new: true }
+        req.body,
+        { new: true, runValidators: true }
       );
 
       if (!updatedProduct) {
@@ -114,8 +127,12 @@ class ProductController extends controller {
         data: updatedProduct,
         message: "Product updated successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Update product error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error updating product: " + error.message,
+      });
     }
   }
 
@@ -135,8 +152,12 @@ class ProductController extends controller {
         success: true,
         message: "Product deleted successfully",
       });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      console.error("Delete product error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error deleting product: " + error.message,
+      });
     }
   }
 }

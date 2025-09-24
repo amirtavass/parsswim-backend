@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const uploadUserProfile = require("upload/uploadUserProfile");
+const uploadUserProfile = require("../upload/uploadUserProfile");
 
 // Admin middleware - ensure only admins can upload product images
 const requireAdmin = (req, res, next) => {

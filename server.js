@@ -2,10 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
 const MongoStore = require("connect-mongo");
-const { validationResult, check } = require("express-validator");
-const multer = require("multer");
 const path = require("path");
 const { mkdirp } = require("mkdirp");
 
@@ -16,40 +13,35 @@ console.log("🚀 Starting ParsSwim API Server...");
 const app = express();
 const port = process.env.PORT || 4000;
 
-// Models
-const User = require("./models/user");
-const Class = require("./models/class");
-const Product = require("./models/product");
+// // ✅ Multer Configuration for File Uploads
+// const storage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     mkdirp("./public/uploads/images").then((made) => {
+//       cb(null, "./public/uploads/images");
+//     });
+//   },
+//   filename: function (req, file, cb) {
+//     cb(null, Date.now() + "-" + file.originalname);
+//   },
+// });
 
-// ✅ Multer Configuration for File Uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    mkdirp("./public/uploads/images").then((made) => {
-      cb(null, "./public/uploads/images");
-    });
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
-});
+// const upload = multer({
+//   storage: storage,
+//   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+//   fileFilter: (req, file, cb) => {
+//     const allowedTypes = /jpeg|jpg|png|gif/;
+//     const extname = allowedTypes.test(
+//       path.extname(file.originalname).toLowerCase()
+//     );
+//     const mimetype = allowedTypes.test(file.mimetype);
 
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const extname = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase()
-    );
-    const mimetype = allowedTypes.test(file.mimetype);
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error("Only image files are allowed"));
-    }
-  },
-});
+//     if (mimetype && extname) {
+//       return cb(null, true);
+//     } else {
+//       cb(new Error("Only image files are allowed"));
+//     }
+//   },
+// });
 
 // ✅ CORS Configuration - FIXED
 const corsOptions = {
@@ -113,15 +105,11 @@ app.use(
   })
 );
 
-// ✅ Admin credentials
-const ADMIN_USERS = [
-  {
-    id: "admin1",
-    username: "admin",
-    password: bcrypt.hashSync("admin123", 8),
-    role: "admin",
-  },
-];
+// ✅ Passport Configuration
+const passport = require("passport");
+require("./passport/passportLocal"); // Load passport strategies
+app.use(passport.initialize());
+app.use(passport.session());
 
 // ✅ Debug middleware
 app.use((req, res, next) => {
@@ -136,82 +124,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ Helper Middleware Functions
-const requireAuth = (req, res, next) => {
-  if (!req.session || !req.session.userId) {
-    return res.status(401).json({
-      success: false,
-      message: "Authentication required",
-    });
-  }
-  next();
-};
-
-const requireAdmin = (req, res, next) => {
-  console.log("Checking admin access:", {
-    sessionId: req.sessionID,
-    isAdmin: req.session?.isAdmin,
-    adminId: req.session?.adminId,
-  });
-
-  if (!req.session || !req.session.isAdmin || !req.session.adminId) {
-    return res.status(403).json({
-      success: false,
-      message: "Admin access required - Please login as admin",
-    });
-  }
-  next();
-};
-
-// ✅ Validation Middleware
-const validateLogin = [
-  check("name", "Username is required").not().isEmpty(),
-  check("password", "Password must be at least 5 characters").isLength({
-    min: 5,
-  }),
-];
-
-const validateRegister = [
-  check("name", "Name is required").not().isEmpty(),
-  check("email", "Valid email is required").isEmail(),
-  check("phone", "Phone is required").not().isEmpty(),
-  check("password", "Password must be at least 5 characters").isLength({
-    min: 5,
-  }),
-];
-
-const validateClass = [
-  check("title", "Title is required").not().isEmpty(),
-  check("classType", "Valid class type required").isIn([
-    "کلاس خصوصی ۱۲ جلسه",
-    "کلاس پدر و فرزند",
-    "کلاس آمادگی مسابقات",
-    "سانس آزاد استخر",
-    "جلسه آزمایشی رایگان",
-  ]),
-  check("duration", "Duration must be positive").isInt({ min: 1 }),
-  check("date", "Valid date required").isISO8601(),
-  check("time", "Time is required").not().isEmpty(),
-  check("maxStudents", "Max students must be positive").isInt({ min: 1 }),
-  check("price", "Price must be non-negative").isNumeric({ min: 0 }),
-  check("instructor", "Valid instructor required").isIn([
-    "مربی اول",
-    "مربی دوم",
-    "هر دو مربی",
-  ]),
-];
-
-const validateProduct = [
-  check("name", "Product name is required").not().isEmpty(),
-  check("price", "Price must be positive").isNumeric({ min: 0 }),
-  check("category", "Valid category required").isIn([
-    "swimwear",
-    "swimgoggles",
-    "swimfins",
-    "swimequipment",
-  ]),
-];
-
 // ✅ Health Check Routes
 app.get("/", (req, res) => {
   res.json({
@@ -224,755 +136,228 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ User Authentication Routes
-app.post("/auth/register", validateRegister, async (req, res) => {
+// ✅ Auth AND Admin Routes (using Passport)
+app.use("/auth", require("./routes/auth"));
+app.use("/admin", require("./routes/admin"));
+// ✅ API Routes
+app.use("/classes", require("./routes/class"));
+app.use("/products", require("./routes/product"));
+app.use("/upload", require("./routes/upload"));
+// // ✅ Upload Route - FIXED
+// app.post("/upload/product", requireAdmin, (req, res) => {
+//   const uploadSingle = upload.single("image");
+
+//   uploadSingle(req, res, (err) => {
+//     if (err) {
+//       console.error("Multer error:", err);
+//       return res.status(400).json({
+//         success: false,
+//         message: err.message || "File upload error",
+//       });
+//     }
+
+//     try {
+//       if (!req.file) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "No image file provided",
+//         });
+//       }
+
+//       console.log("File uploaded successfully:", req.file);
+
+//       // Create proper image path
+//       let imagePath = req.file.path.replace(/\\/g, "/");
+
+//       // Remove 'public' from the beginning
+//       if (imagePath.startsWith("public/")) {
+//         imagePath = imagePath.substring(6);
+//       } else if (imagePath.startsWith("./public/")) {
+//         imagePath = imagePath.substring(8);
+//       }
+
+//       // Ensure path starts with single slash
+//       if (!imagePath.startsWith("/")) {
+//         imagePath = "/" + imagePath;
+//       }
+
+//       console.log("Returning image path:", imagePath);
+
+//       res.json({
+//         success: true,
+//         imagePath: imagePath,
+//         message: "Image uploaded successfully",
+//         file: {
+//           originalName: req.file.originalname,
+//           size: req.file.size,
+//           mimetype: req.file.mimetype,
+//         },
+//       });
+//     } catch (error) {
+//       console.error("Upload processing error:", error);
+//       res.status(500).json({
+//         success: false,
+//         message: "Upload processing failed: " + error.message,
+//       });
+//     }
+//   });
+// });
+
+// ✅ Payment Routes
+app.use("/payment", require("./routes/payment"));
+
+// ✅ Balance Charge Route (Fixed)
+app.post("/dashboard/pay", async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
+    // Parse amount from form data
+    const amount = parseInt(req.body.amount);
+
+    if (!req.session.userId && !req.user) {
+      return res.status(401).json({
         success: false,
-        errors: errors.array().map((err) => err.msg),
+        message: "Authentication required",
       });
     }
 
-    const { name, email, phone, password, age } = req.body;
+    // Get user ID from session or passport
+    const userId = req.session.userId || (req.user && req.user._id);
 
-    if (!User) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    // Check if user exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { name }],
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User already exists with this email or username",
-      });
-    }
-
-    // Create new user
-    const hashedPassword = bcrypt.hashSync(password, 8);
-    const newUser = new User({
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      age: age || null,
-      balance: 0,
-      skillLevel: "beginner",
-    });
-
-    await newUser.save();
-
-    // Set session
-    req.session.userId = newUser._id.toString();
-    req.session.user = {
-      id: newUser._id.toString(),
-      name: newUser.name,
-      email: newUser.email,
-      balance: newUser.balance,
+    const axios = require("axios");
+    const params = {
+      merchant_id: "12345678-1234-1234-1234-123456789012",
+      amount: amount,
+      callback_url: "http://localhost:4000/dashboard/paycallback",
+      description: "Charge account balance - sandbox test",
     };
 
-    // Save session before sending response
-    req.session.save((err) => {
-      if (err) {
-        console.error("Session save error:", err);
-      }
+    const response = await axios.post(
+      "https://sandbox.zarinpal.com/pg/v4/payment/request.json",
+      params
+    );
 
-      res.json({
-        success: true,
-        user: {
-          id: newUser._id,
-          name: newUser.name,
-          email: newUser.email,
-          phone: newUser.phone,
-          balance: newUser.balance,
-          skillLevel: newUser.skillLevel,
-        },
-        message: "Registration successful",
+    if (response.data.data && response.data.data.code === 100) {
+      const Payment = require("./models/payment");
+      const newPayment = new Payment({
+        user: userId,
+        amount: amount,
+        resnumber: response.data.data.authority,
       });
-    });
+      await newPayment.save();
+
+      return res.redirect(
+        `https://sandbox.zarinpal.com/pg/StartPay/${response.data.data.authority}`
+      );
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Payment initiation failed",
+      });
+    }
   } catch (error) {
-    console.error("Registration error:", error);
+    console.error("Dashboard payment error:", error);
     res.status(500).json({
       success: false,
-      message: "Registration failed: " + error.message,
+      message: "Payment error: " + error.message,
     });
   }
 });
 
-app.post("/auth/login", validateLogin, async (req, res) => {
+// ✅ Dashboard Payment Callback
+app.get("/dashboard/paycallback", async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
+    const axios = require("axios");
+    const Payment = require("./models/payment");
+    const User = require("./models/user");
+
+    if (req.query.Status && req.query.Status !== "OK") {
+      return res.redirect("http://localhost:3000/dashboard?payment=cancelled");
     }
 
-    const { name, password } = req.body;
-
-    if (!User) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    // Find user by name or email
-    const user = await User.findOne({
-      $or: [{ name }, { email: name }],
+    let paymentRecord = await Payment.findOne({
+      resnumber: req.query.Authority,
     });
 
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
+    if (!paymentRecord) {
+      return res.redirect("http://localhost:3000/dashboard?payment=notfound");
     }
 
-    // Set session
-    req.session.userId = user._id.toString();
-    req.session.user = {
-      id: user._id.toString(),
-      name: user.name,
-      email: user.email,
-      balance: user.balance,
+    let params = {
+      merchant_id: "12345678-1234-1234-1234-123456789012",
+      amount: paymentRecord.amount,
+      authority: req.query.Authority,
     };
 
-    // Save session before sending response
-    req.session.save((err) => {
-      if (err) {
-        console.error("Session save error:", err);
-      }
-
-      res.json({
-        success: true,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          balance: user.balance,
-          skillLevel: user.skillLevel,
-        },
-        message: "Login successful",
-      });
-    });
-  } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Login failed: " + error.message,
-    });
-  }
-});
-
-app.get("/auth/me", async (req, res) => {
-  try {
-    if (!req.session || !req.session.userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Not authenticated",
-      });
-    }
-
-    if (!User) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const user = await User.findById(req.session.userId);
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        balance: user.balance,
-        skillLevel: user.skillLevel,
-      },
-    });
-  } catch (error) {
-    console.error("Auth check error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching user data",
-    });
-  }
-});
-
-app.post("/auth/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Logout failed",
-      });
-    }
-    res.clearCookie("parsswim.sid");
-    res.json({
-      success: true,
-      message: "Logged out successfully",
-    });
-  });
-});
-
-// ✅ Admin Routes
-app.post(
-  "/admin/login",
-  [
-    check("username", "Username is required").not().isEmpty(),
-    check("password", "Password is required").not().isEmpty(),
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array().map((err) => err.msg),
-        });
-      }
-
-      const { username, password } = req.body;
-
-      // Find admin user
-      const admin = ADMIN_USERS.find((a) => a.username === username);
-
-      if (!admin || !bcrypt.compareSync(password, admin.password)) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid admin credentials",
-        });
-      }
-
-      // Clear any existing user session
-      if (req.session.userId) {
-        delete req.session.userId;
-        delete req.session.user;
-      }
-
-      // Set admin session
-      req.session.adminId = admin.id;
-      req.session.isAdmin = true;
-
-      // Save session before sending response
-      req.session.save((err) => {
-        if (err) {
-          console.error("Admin session save error:", err);
-          return res.status(500).json({
-            success: false,
-            message: "Session save failed",
-          });
-        }
-
-        console.log("Admin logged in successfully:", {
-          adminId: admin.id,
-          sessionId: req.sessionID,
-        });
-
-        res.json({
-          success: true,
-          admin: {
-            id: admin.id,
-            username: admin.username,
-            role: admin.role,
-          },
-          message: "Admin login successful",
-        });
-      });
-    } catch (error) {
-      console.error("Admin login error:", error);
-      res.status(500).json({
-        success: false,
-        message: "Admin login failed: " + error.message,
-      });
-    }
-  }
-);
-
-app.get("/admin/me", (req, res) => {
-  if (!req.session || !req.session.isAdmin || !req.session.adminId) {
-    return res.status(401).json({
-      success: false,
-      message: "Not authenticated as admin",
-    });
-  }
-
-  const admin = ADMIN_USERS.find((a) => a.id === req.session.adminId);
-  if (!admin) {
-    return res.status(401).json({
-      success: false,
-      message: "Admin not found",
-    });
-  }
-
-  res.json({
-    success: true,
-    admin: {
-      id: admin.id,
-      username: admin.username,
-      role: admin.role,
-    },
-  });
-});
-
-app.post("/admin/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Logout failed",
-      });
-    }
-    res.clearCookie("parsswim.sid");
-    res.json({
-      success: true,
-      message: "Admin logged out successfully",
-    });
-  });
-});
-
-// ✅ Class Routes
-app.get("/classes", async (req, res) => {
-  try {
-    if (!Class) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    let filter = { isActive: true };
-    if (req.query.classType) {
-      filter.classType = req.query.classType;
-    }
-
-    const classes = await Class.find(filter).sort({ date: 1, time: 1 });
-    res.json({
-      success: true,
-      data: classes,
-      message: "Classes retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Get classes error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching classes",
-    });
-  }
-});
-
-app.get("/classes/available", async (req, res) => {
-  try {
-    if (!Class) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const classes = await Class.find({
-      isActive: true,
-      date: { $gte: new Date() },
-      $expr: { $lt: ["$currentStudents", "$maxStudents"] },
-    }).sort({ date: 1, time: 1 });
-
-    res.json({
-      success: true,
-      data: classes,
-    });
-  } catch (error) {
-    console.error("Get available classes error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching available classes",
-    });
-  }
-});
-
-app.get("/classes/:id", async (req, res) => {
-  try {
-    if (!Class) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const classItem = await Class.findById(req.params.id);
-    if (!classItem) {
-      return res.status(404).json({
-        success: false,
-        message: "Class not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: classItem,
-    });
-  } catch (error) {
-    console.error("Get class error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching class",
-    });
-  }
-});
-
-app.post("/classes", requireAdmin, validateClass, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
-    }
-
-    if (!Class) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const newClass = new Class(req.body);
-    await newClass.save();
-
-    res.status(201).json({
-      success: true,
-      data: newClass,
-      message: "Class created successfully",
-    });
-  } catch (error) {
-    console.error("Create class error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error creating class: " + error.message,
-    });
-  }
-});
-
-app.put("/classes/:id", requireAdmin, validateClass, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
-    }
-
-    if (!Class) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const updatedClass = await Class.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
+    const response = await axios.post(
+      "https://sandbox.zarinpal.com/pg/v4/payment/verify.json",
+      params
     );
 
-    if (!updatedClass) {
-      return res.status(404).json({
-        success: false,
-        message: "Class not found",
-      });
-    }
+    if (
+      response.data.data &&
+      (response.data.data.code === 100 || response.data.data.code === 101)
+    ) {
+      paymentRecord.payment = true;
+      await paymentRecord.save();
 
-    res.json({
-      success: true,
-      data: updatedClass,
-      message: "Class updated successfully",
-    });
-  } catch (error) {
-    console.error("Update class error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating class: " + error.message,
-    });
+      // Update user balance
+      await User.findByIdAndUpdate(paymentRecord.user, {
+        $inc: { balance: paymentRecord.amount },
+      });
+
+      return res.redirect("http://localhost:3000/dashboard?payment=success");
+    } else {
+      return res.redirect("http://localhost:3000/dashboard?payment=failed");
+    }
+  } catch (err) {
+    console.error("Dashboard payment callback error:", err);
+    res.redirect("http://localhost:3000/dashboard?payment=error");
   }
 });
-
-app.delete("/classes/:id", requireAdmin, async (req, res) => {
+// ✅ Payment Callback Route (for cart payments)
+app.get("/paycallback", async (req, res) => {
   try {
-    if (!Class) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
+    const axios = require("axios");
+    const Payment = require("./models/payment");
+
+    // If payment was cancelled
+    if (req.query.Status && req.query.Status !== "OK") {
+      return res.redirect("http://localhost:3000/cart?payment=cancelled");
     }
 
-    const deletedClass = await Class.findByIdAndDelete(req.params.id);
-    if (!deletedClass) {
-      return res.status(404).json({
-        success: false,
-        message: "Class not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Class deleted successfully",
+    let paymentRecord = await Payment.findOne({
+      resnumber: req.query.Authority,
     });
-  } catch (error) {
-    console.error("Delete class error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error deleting class: " + error.message,
-    });
-  }
-});
 
-// ✅ Product Routes
-app.get("/products", async (req, res) => {
-  try {
-    if (!Product) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
+    if (!paymentRecord) {
+      return res.redirect("http://localhost:3000/cart?payment=notfound");
     }
 
-    let filter = { isActive: true };
-    if (req.query.category) {
-      filter.category = req.query.category;
-    }
+    let params = {
+      merchant_id: "12345678-1234-1234-1234-123456789012",
+      amount: paymentRecord.amount,
+      authority: req.query.Authority,
+    };
 
-    const products = await Product.find(filter);
-    res.json({
-      success: true,
-      data: products,
-      message: "Products retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Get products error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching products",
-    });
-  }
-});
-
-app.get("/products/:id", async (req, res) => {
-  try {
-    if (!Product) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const product = await Product.findById(req.params.id);
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: product,
-    });
-  } catch (error) {
-    console.error("Get product error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching product",
-    });
-  }
-});
-
-app.post("/products", requireAdmin, validateProduct, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
-    }
-
-    if (!Product) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const newProduct = new Product(req.body);
-    await newProduct.save();
-
-    res.status(201).json({
-      success: true,
-      data: newProduct,
-      message: "Product created successfully",
-    });
-  } catch (error) {
-    console.error("Create product error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error creating product: " + error.message,
-    });
-  }
-});
-
-app.put("/products/:id", requireAdmin, validateProduct, async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
-    }
-
-    if (!Product) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const updatedProduct = await Product.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
+    const response = await axios.post(
+      "https://sandbox.zarinpal.com/pg/v4/payment/verify.json",
+      params
     );
 
-    if (!updatedProduct) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
-    }
+    if (
+      response.data.data &&
+      (response.data.data.code === 100 || response.data.data.code === 101)
+    ) {
+      paymentRecord.payment = true;
+      await paymentRecord.save();
 
-    res.json({
-      success: true,
-      data: updatedProduct,
-      message: "Product updated successfully",
-    });
-  } catch (error) {
-    console.error("Update product error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating product: " + error.message,
-    });
+      return res.redirect("http://localhost:3000/cart?payment=success");
+    } else {
+      return res.redirect("http://localhost:3000/cart?payment=failed");
+    }
+  } catch (err) {
+    console.error("Payment callback error:", err);
+    res.redirect("http://localhost:3000/cart?payment=error");
   }
-});
-
-app.delete("/products/:id", requireAdmin, async (req, res) => {
-  try {
-    if (!Product) {
-      return res.status(500).json({
-        success: false,
-        message: "Database not initialized",
-      });
-    }
-
-    const deletedProduct = await Product.findByIdAndDelete(req.params.id);
-    if (!deletedProduct) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Product deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete product error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error deleting product: " + error.message,
-    });
-  }
-});
-
-// ✅ Upload Route - FIXED
-app.post("/upload/product", requireAdmin, (req, res) => {
-  const uploadSingle = upload.single("image");
-
-  uploadSingle(req, res, (err) => {
-    if (err) {
-      console.error("Multer error:", err);
-      return res.status(400).json({
-        success: false,
-        message: err.message || "File upload error",
-      });
-    }
-
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          message: "No image file provided",
-        });
-      }
-
-      console.log("File uploaded successfully:", req.file);
-
-      // Create proper image path
-      let imagePath = req.file.path.replace(/\\/g, "/");
-
-      // Remove 'public' from the beginning
-      if (imagePath.startsWith("public/")) {
-        imagePath = imagePath.substring(6);
-      } else if (imagePath.startsWith("./public/")) {
-        imagePath = imagePath.substring(8);
-      }
-
-      // Ensure path starts with single slash
-      if (!imagePath.startsWith("/")) {
-        imagePath = "/" + imagePath;
-      }
-
-      console.log("Returning image path:", imagePath);
-
-      res.json({
-        success: true,
-        imagePath: imagePath,
-        message: "Image uploaded successfully",
-        file: {
-          originalName: req.file.originalname,
-          size: req.file.size,
-          mimetype: req.file.mimetype,
-        },
-      });
-    } catch (error) {
-      console.error("Upload processing error:", error);
-      res.status(500).json({
-        success: false,
-        message: "Upload processing failed: " + error.message,
-      });
-    }
-  });
 });
 
 // ✅ Database Connection

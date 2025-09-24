@@ -26,21 +26,15 @@ passport.use(
         // Check if user with this name already exists
         let existingUser = await User.findOne({ name: req.body.name });
         if (existingUser) {
-          return done(
-            null,
-            false,
-            req.flash("errors", "This user with name exists")
-          );
+          return done(null, false, { message: "This user with name exists" });
         }
 
         // Check if email already exists
         let existingEmail = await User.findOne({ email: req.body.email });
         if (existingEmail) {
-          return done(
-            null,
-            false,
-            req.flash("errors", "This email is already registered")
-          );
+          return done(null, false, {
+            message: "Your information isn't correct",
+          });
         }
 
         // Create new user with ALL required fields
