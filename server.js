@@ -50,6 +50,7 @@ const corsOptions = {
       "https://parsswim.ir",
       "http://localhost:3000",
       "http://127.0.0.1:3000",
+      "https://www.parsswim.ir",
     ];
 
     // Allow requests with no origin (like mobile apps or Postman)
@@ -94,12 +95,11 @@ app.use(
         })
       : undefined,
     cookie: {
-      secure: false,
+      secure: true,
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      sameSite: "lax",
-      domain:
-        process.env.NODE_ENV === "production" ? ".parsswim.ir" : undefined,
+      sameSite: "none",
+      domain: undefined,
     },
     name: "parsswim.sid", // Custom session name
   })
