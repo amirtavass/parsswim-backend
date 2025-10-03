@@ -102,7 +102,7 @@ app.use(
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       sameSite: isProduction ? "none" : "lax",
-      domain: isProduction ? ".parsswim.ir" : undefined, // ✅ FIXED: Proper domain for production
+      // domain removed so cookie is scoped to the backend host (Railway domain) and not rejected by browser
     },
     name: "parsswim.sid", // Custom session name
   })
