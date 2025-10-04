@@ -13,6 +13,9 @@ console.log("🚀 Starting ParsSwim API Server...");
 const app = express();
 const port = process.env.PORT || 4000;
 
+const cookieParser = require("cookie-parser");
+app.use(cookieParser());
+
 // // ✅ Multer Configuration for File Uploads
 // const storage = multer.diskStorage({
 //   destination: function (req, file, cb) {
