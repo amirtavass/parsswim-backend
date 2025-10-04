@@ -7,17 +7,8 @@ const classController = require("../controllers/classController");
 // Validators
 const classValidator = require("../validators/classValidator");
 
-// Middleware for admin-only routes
-const adminOnly = (req, res, next) => {
-  // Check for admin session (not user session)
-  if (req.session.isAdmin && req.session.adminId) {
-    return next();
-  }
-  return res.status(403).json({
-    success: false,
-    message: "Access denied. Admin privileges required.",
-  });
-};
+// JWT-based admin middleware
+const adminJwt = require("../middlewares/adminJwt");
 
 // Public routes (no authentication required)
 router.get("/", classController.getAllClasses);
@@ -27,16 +18,16 @@ router.get("/:id", classController.getOneClass);
 // Admin-only routes - FIXED: Use proper admin middleware
 router.post(
   "/",
-  adminOnly,
+  adminJwt,
   classValidator.handle(),
   classController.createClass
 );
 router.put(
   "/:id",
-  adminOnly,
+  adminJwt,
   classValidator.handle(),
   classController.updateClass
 );
-router.delete("/:id", adminOnly, classController.deleteClass);
+router.delete(":id", adminJwt, classController.deleteClass);
 
 module.exports = router;

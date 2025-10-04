@@ -5,17 +5,6 @@ const { check } = require("express-validator");
 // Controllers
 const adminController = require("../controllers/adminController");
 
-// Admin authentication middleware
-const requireAdmin = (req, res, next) => {
-  if (req.session.isAdmin && req.session.adminId) {
-    return next();
-  }
-  return res.status(403).json({
-    success: false,
-    message: "Admin access required",
-  });
-};
-
 // Admin login validation
 const adminLoginValidation = [
   check("username", "Username is required").not().isEmpty(),

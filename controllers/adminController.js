@@ -35,10 +35,15 @@ class AdminController extends controller {
         });
       }
 
-      // Store admin in session
-      req.session.adminId = admin.id;
-      req.session.isAdmin = true;
-
+      // Issue JWT token
+      const { signAdmin } = require("../lib/jwt");
+      const token = signAdmin(admin);
+      res.cookie("admin_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "none",
+        maxAge: 2 * 60 * 60 * 1000, // 2 hours
+      });
       return res.json({
         success: true,
         admin: { id: admin.id, username: admin.username, role: admin.role },
@@ -55,26 +60,35 @@ class AdminController extends controller {
 
   async getCurrentAdmin(req, res, next) {
     try {
-      if (!req.session.isAdmin || !req.session.adminId) {
-        return res.status(401).json({
-          success: false,
-          message: "Not authenticated as admin",
-        });
+      // Check JWT
+      const { verifyAdmin } = require("../lib/jwt");
+      const token =
+        req.cookies.admin_token ||
+        (req.headers.authorization &&
+          req.headers.authorization.replace("Bearer ", ""));
+      if (!token) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Not authenticated as admin" });
       }
-
-      const admin = ADMIN_USERS.find((a) => a.id === req.session.adminId);
-      if (!admin) {
-        return res.status(401).json({
-          success: false,
-          message: "Admin not found",
+      try {
+        const decoded = verifyAdmin(token);
+        const admin = ADMIN_USERS.find((a) => a.id === decoded.id);
+        if (!admin) {
+          return res
+            .status(401)
+            .json({ success: false, message: "Admin not found" });
+        }
+        res.json({
+          success: true,
+          admin: { id: admin.id, username: admin.username, role: admin.role },
+          message: "Admin retrieved successfully",
         });
+      } catch (err) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Invalid or expired token" });
       }
-
-      res.json({
-        success: true,
-        admin: { id: admin.id, username: admin.username, role: admin.role },
-        message: "Admin retrieved successfully",
-      });
     } catch (err) {
       next(err);
     }
@@ -95,18 +109,14 @@ class AdminController extends controller {
   // }
   async logout(req, res, next) {
     try {
-      req.session.destroy((err) => {
-        if (err) {
-          return res.status(500).json({
-            success: false,
-            message: "Logout failed",
-          });
-        }
-        res.clearCookie("parsswim.sid");
-        res.json({
-          success: true,
-          message: "Admin logged out successfully",
-        });
+      res.clearCookie("admin_token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "none",
+      });
+      res.json({
+        success: true,
+        message: "Admin logged out successfully",
       });
     } catch (error) {
       next(error);
