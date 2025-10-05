@@ -60,7 +60,7 @@ module.exports = [
     id: 13,
     name: " فین میسیسیپی",
     price: "450,000",
-    password: "23r243522",
+    password: "23r2f43522",
     inStock: false,
   },
 
