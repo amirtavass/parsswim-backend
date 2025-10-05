@@ -408,6 +408,9 @@ async function connectDatabase() {
     await mongoose.connect(mongoUrl, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
+      tls: true,
+      tlsAllowInvalidCertificates: true,
+      serverSelectionTimeoutMS: 30000,
     });
 
     console.log("✅ MongoDB connected successfully");
