@@ -409,7 +409,6 @@ async function connectDatabase() {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
-
     console.log("✅ MongoDB connected successfully");
 
     console.log("✅ Models initialized");
