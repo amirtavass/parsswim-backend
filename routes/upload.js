@@ -2,19 +2,11 @@ const express = require("express");
 const router = express.Router();
 const uploadUserProfile = require("../upload/uploadUserProfile");
 
-// Admin middleware - ensure only admins can upload product images
-const requireAdmin = (req, res, next) => {
-  if (req.session.isAdmin && req.session.adminId) {
-    return next();
-  }
-  return res.status(403).json({
-    success: false,
-    message: "Admin access required",
-  });
-};
+// JWT-based admin middleware
+const adminJwt = require("../middlewares/adminJwt");
 
 // POST /upload/product - Upload product image
-router.post("/product", requireAdmin, (req, res) => {
+router.post("/product", adminJwt, (req, res) => {
   // Use multer middleware with proper error handling
   const upload = uploadUserProfile.single("image");
 

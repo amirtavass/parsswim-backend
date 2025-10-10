@@ -38,10 +38,10 @@ class AdminController extends controller {
       // Issue JWT token
       const { signAdmin } = require("../lib/jwt");
       const token = signAdmin(admin);
-      res.cookie("admin_token", token, {
+      res.cookie("parsswim_admin_jwt", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "none",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         maxAge: 2 * 60 * 60 * 1000, // 2 hours
       });
       return res.json({
@@ -63,7 +63,7 @@ class AdminController extends controller {
       // Check JWT
       const { verifyAdmin } = require("../lib/jwt");
       const token =
-        req.cookies.admin_token ||
+        req.cookies.parsswim_admin_jwt ||
         (req.headers.authorization &&
           req.headers.authorization.replace("Bearer ", ""));
       if (!token) {
@@ -109,10 +109,10 @@ class AdminController extends controller {
   // }
   async logout(req, res, next) {
     try {
-      res.clearCookie("admin_token", {
+      res.clearCookie("parsswim_admin_jwt", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "none",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       });
       res.json({
         success: true,
