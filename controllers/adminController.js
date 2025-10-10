@@ -47,6 +47,7 @@ class AdminController extends controller {
       return res.json({
         success: true,
         admin: { id: admin.id, username: admin.username, role: admin.role },
+        token: token, // Include token for localStorage in production
         message: "Admin login successful",
       });
     } catch (err) {
