@@ -83,7 +83,12 @@ jspm_packages/
 .vscode-test
 
 # Uploaded files (don't commit user uploads)
-public/uploads/
+# But allow product images to be committed
+public/uploads/*
+!public/uploads/images/
+!public/uploads/images/*.jpg
+!public/uploads/images/*.png
+!public/uploads/images/*.gif
 
 # Session store files
 sessions/
