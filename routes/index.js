@@ -29,7 +29,11 @@ router.use("/logout", (req, res, next) => {
 });
 router.get("/cart", (req, res) => {
   const payment = req.query.payment || "unknown";
-  res.redirect(`http://localhost:3000/cart?payment=${payment}`);
+  const frontendUrl =
+    process.env.NODE_ENV === "production"
+      ? "https://parsswim.ir"
+      : "http://localhost:3000";
+  res.redirect(`${frontendUrl}/cart?payment=${payment}`);
 });
 
 router.all(/.*/, (req, res, next) => {

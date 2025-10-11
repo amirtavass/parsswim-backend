@@ -71,10 +71,15 @@ class RegistrationController extends controller {
       }
 
       // For paid classes, initiate sandbox payment
+      const backendUrl =
+        process.env.NODE_ENV === "production"
+          ? "https://parsswim-backend-production.up.railway.app"
+          : "http://localhost:4000";
+
       let params = {
         merchant_id: "12345678-1234-1234-1234-123456789012",
         amount: classItem.price,
-        callback_url: "http://localhost:4000/registrations/payment-callback",
+        callback_url: `${backendUrl}/registrations/payment-callback`,
         description: `Registration for ${classItem.title} - sandbox test`,
       };
 

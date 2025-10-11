@@ -15,10 +15,20 @@ router.post("/cart", async (req, res) => {
 
     const { items, totalAmount } = req.body;
 
+    // Use production URL when in production, localhost for development
+    const frontendUrl =
+      process.env.NODE_ENV === "production"
+        ? "https://parsswim.ir"
+        : "http://localhost:3000";
+    const backendUrl =
+      process.env.NODE_ENV === "production"
+        ? "https://parsswim-backend-production.up.railway.app"
+        : "http://localhost:4000";
+
     let params = {
       merchant_id: "12345678-1234-1234-1234-123456789012",
       amount: totalAmount,
-      callback_url: "http://localhost:4000/paycallback",
+      callback_url: `${backendUrl}/paycallback`,
       description: "Cart purchase - sandbox test",
     };
 
@@ -102,8 +112,13 @@ router.get("/cart-callback", async (req, res) => {
 // Balance payment callback
 router.get("/balance-callback", async (req, res) => {
   try {
+    const frontendUrl =
+      process.env.NODE_ENV === "production"
+        ? "https://parsswim.ir"
+        : "http://localhost:3000";
+
     if (req.query.Status && req.query.Status !== "OK") {
-      return res.redirect("http://localhost:3000/dashboard?payment=failed");
+      return res.redirect(`${frontendUrl}/dashboard?payment=failed`);
     }
 
     let paymentRecord = await payment.findOne({
@@ -111,7 +126,7 @@ router.get("/balance-callback", async (req, res) => {
     });
 
     if (!paymentRecord) {
-      return res.redirect("http://localhost:3000/dashboard?payment=notfound");
+      return res.redirect(`${frontendUrl}/dashboard?payment=notfound`);
     }
 
     let params = {
@@ -138,15 +153,13 @@ router.get("/balance-callback", async (req, res) => {
         $inc: { balance: paymentRecord.amount },
       });
 
-      res.redirect(
-        "http://localhost:3000/dashboard?payment=success&type=balance"
-      );
+      res.redirect(`${frontendUrl}/dashboard?payment=success&type=balance`);
     } else {
-      res.redirect("http://localhost:3000/dashboard?payment=failed");
+      res.redirect(`${frontendUrl}/dashboard?payment=failed`);
     }
   } catch (err) {
     console.error("Balance payment callback error:", err);
-    res.redirect("http://localhost:3000/dashboard?payment=error");
+    res.redirect(`${frontendUrl}/dashboard?payment=error`);
   }
 });
 
