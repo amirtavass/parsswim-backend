@@ -6,11 +6,13 @@ module.exports = new (class ClassValidator extends validator {
     return [
       check("title", "Title is required").not().isEmpty(),
       check("classType", "Class type is required").isIn([
-        "کلاس خصوصی ۱۲ جلسه",
-        "کلاس پدر و فرزند",
-        "کلاس آمادگی مسابقات",
-        "سانس آزاد استخر",
-        "جلسه آزمایشی رایگان",
+        "Free Trial Session",
+        "Private 12-Session",
+        "Parent & Child",
+        "Competition Prep",
+        "Free Pool Session",
+        "Group Beginner",
+        "Advanced Training",
       ]),
       check("duration", "Duration must be a positive number").isInt({ min: 1 }),
       check("date", "Valid date is required").isISO8601(),
@@ -20,9 +22,9 @@ module.exports = new (class ClassValidator extends validator {
       }),
       check("price", "Price must be a positive number").isNumeric({ min: 0 }),
       check("instructor", "Instructor is required").isIn([
-        "مربی اول",
-        "مربی دوم",
-        "هر دو مربی",
+        "Primary Coach",
+        "Secondary Coach",
+        "Both Coaches",
       ]),
     ];
   }

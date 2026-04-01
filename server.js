@@ -108,7 +108,7 @@ app.use(
       // domain removed so cookie is scoped to the backend host (Railway domain) and not rejected by browser
     },
     name: "parsswim.sid", // Custom session name
-  })
+  }),
 );
 
 // ✅ Passport Configuration
@@ -117,18 +117,18 @@ require("./passport/passportLocal"); // Load passport strategies
 app.use(passport.initialize());
 app.use(passport.session());
 
-// ✅ Debug middleware
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path} - Session ID: ${req.sessionID}`);
-  if (req.session) {
-    console.log("Session data:", {
-      isAdmin: req.session.isAdmin,
-      adminId: req.session.adminId,
-      userId: req.session.userId,
-    });
-  }
-  next();
-});
+// ✅ Debug middleware was causing global issues with session handling, so it's removed for now. Use logging in specific routes instead.
+// app.use((req, res, next) => {
+//   console.log(`${req.method} ${req.path} - Session ID: ${req.sessionID}`);
+//   if (req.session) {
+//     console.log("Session data:", {
+//       isAdmin: req.session.isAdmin,
+//       adminId: req.session.adminId,
+//       userId: req.session.userId,
+//     });
+//   }
+//   next();
+// });
 
 // ✅ Health Check Routes
 app.get("/", (req, res) => {
@@ -240,7 +240,7 @@ app.post("/dashboard/pay", async (req, res) => {
 
     const response = await axios.post(
       "https://sandbox.zarinpal.com/pg/v4/payment/request.json",
-      params
+      params,
     );
 
     if (response.data.data && response.data.data.code === 100) {
@@ -253,7 +253,7 @@ app.post("/dashboard/pay", async (req, res) => {
       await newPayment.save();
 
       return res.redirect(
-        `https://sandbox.zarinpal.com/pg/StartPay/${response.data.data.authority}`
+        `https://sandbox.zarinpal.com/pg/StartPay/${response.data.data.authority}`,
       );
     } else {
       return res.status(400).json({
@@ -303,7 +303,7 @@ app.get("/dashboard/paycallback", async (req, res) => {
 
     const response = await axios.post(
       "https://sandbox.zarinpal.com/pg/v4/payment/verify.json",
-      params
+      params,
     );
 
     if (
@@ -369,7 +369,7 @@ app.get("/paycallback", async (req, res) => {
 
     const response = await axios.post(
       "https://sandbox.zarinpal.com/pg/v4/payment/verify.json",
-      params
+      params,
     );
 
     if (

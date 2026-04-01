@@ -68,8 +68,13 @@ class ClassController extends controller {
   // POST /api/classes - Create new class (Admin only)
   async createClass(req, res, next) {
     try {
+      console.log("🔍 Create class request received:");
+      console.log("   Body:", req.body);
+      console.log("   Admin:", req.admin);
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log("❌ Validation errors:", errors.array());
         return res.status(400).json({
           success: false,
           errors: errors.array().map((err) => err.msg),
@@ -126,7 +131,7 @@ class ClassController extends controller {
       const updatedClass = await Class.findByIdAndUpdate(
         req.params.id,
         req.body,
-        { new: true, runValidators: true }
+        { new: true, runValidators: true },
       );
 
       if (!updatedClass) {

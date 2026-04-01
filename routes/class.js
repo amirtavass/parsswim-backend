@@ -20,14 +20,14 @@ router.post(
   "/",
   adminJwt,
   classValidator.handle(),
-  classController.createClass
+  classController.createClass,
 );
 router.put(
   "/:id",
   adminJwt,
   classValidator.handle(),
-  classController.updateClass
+  classController.updateClass,
 );
-router.delete(":id", adminJwt, classController.deleteClass);
+router.delete("/:id", adminJwt, classController.deleteClass);
 
 module.exports = router;

@@ -55,8 +55,8 @@ passport.use(
         console.error("Registration error:", error);
         return done(error, false, { message: error.message });
       }
-    }
-  )
+    },
+  ),
 );
 
 // Login strategy - updated to allow login with either name or email
@@ -76,11 +76,9 @@ passport.use(
         });
 
         if (!user || !bcrypt.compareSync(req.body.password, user.password)) {
-          return done(
-            null,
-            false,
-            req.flash("errors", "Your information isn't correct")
-          );
+          return done(null, false, {
+            message: "user with this email not found",
+          });
         }
 
         done(null, user);
@@ -88,6 +86,6 @@ passport.use(
         console.error("Login error:", error);
         return done(error, false, { message: error.message });
       }
-    }
-  )
+    },
+  ),
 );

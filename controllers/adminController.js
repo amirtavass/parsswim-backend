@@ -1,23 +1,18 @@
 const { validationResult } = require("express-validator");
 const bcrypt = require("bcrypt");
-
-// Simple in-memory admin for now (in production, use database)
-const ADMIN_USERS = [
-  {
-    id: "admin1",
-    username: "admin",
-    password: bcrypt.hashSync("admin123", 8), // Hash the password
-    role: "admin",
-  },
-];
+const User = require("../models/user");
 
 let controller = require("./controller");
 
 class AdminController extends controller {
   async login(req, res, next) {
     try {
+      console.log("🔐 Admin login attempt received");
+      console.log("   Body:", { username: req.body.username, password: "***" });
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log("❌ Validation errors:", errors.array());
         return res.status(400).json({
           success: false,
           errors: errors.array().map((err) => err.msg),
@@ -26,9 +21,25 @@ class AdminController extends controller {
 
       const { username, password } = req.body;
 
-      // Find admin user
-      const admin = ADMIN_USERS.find((a) => a.username === username);
-      if (!admin || !bcrypt.compareSync(password, admin.password)) {
+      // Find admin user from database
+      console.log(`🔍 Looking for admin user: ${username}`);
+      const admin = await User.findOne({ name: username, role: "admin" });
+      console.log("   User found:", admin ? "YES" : "NO");
+
+      if (!admin) {
+        console.log(`❌ Admin user "${username}" not found in database`);
+        return res.status(401).json({
+          success: false,
+          message: "Invalid admin credentials",
+        });
+      }
+
+      // Check password
+      const passwordMatch = bcrypt.compareSync(password, admin.password);
+      console.log("   Password match:", passwordMatch ? "YES" : "NO");
+
+      if (!passwordMatch) {
+        console.log("❌ Password mismatch");
         return res.status(401).json({
           success: false,
           message: "Invalid admin credentials",
@@ -36,21 +47,35 @@ class AdminController extends controller {
       }
 
       // Issue JWT token
+      console.log("✅ Admin credentials valid, issuing JWT");
       const { signAdmin } = require("../lib/jwt");
-      const token = signAdmin(admin);
+      const token = signAdmin({
+        id: admin._id,
+        username: admin.name,
+        email: admin.email,
+      });
+
       res.cookie("parsswim_admin_jwt", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         maxAge: 2 * 60 * 60 * 1000, // 2 hours
       });
+
+      console.log("✅ Admin login successful");
       return res.json({
         success: true,
-        admin: { id: admin.id, username: admin.username, role: admin.role },
+        admin: {
+          id: admin._id,
+          username: admin.name,
+          email: admin.email,
+          role: admin.role,
+        },
         message: "Admin login successful",
       });
     } catch (err) {
-      console.error("Admin login error:", err);
+      console.error("❌ Admin login error:", err.message);
+      console.error("   Stack:", err.stack);
       res.status(500).json({
         success: false,
         message: "Admin login failed: " + err.message,
@@ -73,15 +98,20 @@ class AdminController extends controller {
       }
       try {
         const decoded = verifyAdmin(token);
-        const admin = ADMIN_USERS.find((a) => a.id === decoded.id);
-        if (!admin) {
+        const admin = await User.findById(decoded.id);
+        if (!admin || admin.role !== "admin") {
           return res
             .status(401)
             .json({ success: false, message: "Admin not found" });
         }
         res.json({
           success: true,
-          admin: { id: admin.id, username: admin.username, role: admin.role },
+          admin: {
+            id: admin._id,
+            username: admin.name,
+            email: admin.email,
+            role: admin.role,
+          },
           message: "Admin retrieved successfully",
         });
       } catch (err) {
